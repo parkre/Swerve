@@ -1,0 +1,21 @@
+<resources>
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <!-- Customize your theme here. -->
+    </style>
+
+    <!-- Application theme. -->
+    <style name="MyActionBar" parent="@android:style/Widget.ActionBar">
+        <item name="android:label">Swerve</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="android:background">@color/light_blue</item>
+    </style>
+    <style name="AppTheme.AppBarOverlay" parent="ThemeOverlay.AppCompat.Dark.ActionBar" />
+    <style name="AppTheme.PopupOverlay" parent="ThemeOverlay.AppCompat.Light" />
+
+    <color name="seperator">#222</color>
+    <color name="light_blue">#3bb9ff</color>
+    <color name="white">#ffffff</color>
+
+</resources>
