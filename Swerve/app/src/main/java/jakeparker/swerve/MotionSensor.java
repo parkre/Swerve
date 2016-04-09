@@ -3,15 +3,23 @@ package jakeparker.swerve;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.view.View;
 
 import com.dropbox.sync.android.DbxAccountManager;
 import com.dropbox.sync.android.DbxException;
@@ -20,7 +28,9 @@ import com.dropbox.sync.android.DbxPath;
 
 import org.w3c.dom.Text;
 
-/**
+import java.util.ArrayList;
+
+/*
  * Created by jacobparker on 3/29/16.
  */
 public class MotionSensor extends Activity implements SensorEventListener
@@ -28,11 +38,15 @@ public class MotionSensor extends Activity implements SensorEventListener
     private TextView tv;
     private SensorManager mgr; //the management
     private Sensor gyro;
+    private Sensor accelerometer;
+    private Sensor magnetometer;
     private Sensor rotationVec;
 
     private static final float NS2S = 1.0f / 1000000000.0f;
     private final float[] deltaRotationVector = new float[4];
-    private float timestamp;
+    private long timestamp;
+    private long lastUpdate = 0;
+    private final static long startTime = Dropboxer.startTime;
 
     private boolean hasInitialOrientation = false;
     private float[] initialRotationMatrix;
@@ -51,6 +65,23 @@ public class MotionSensor extends Activity implements SensorEventListener
     private float deltaYMax = 0;
     private float deltaZMax = 0;
 
+    float[] inclineGravity = new float[3];
+    float[] mGravity;
+    float[] mGeomagnetic;
+    float orientation[] = new float[3];
+    float pitch;
+    float roll;
+
+    private ArrayList<Float> data = new ArrayList(1000);
+    private ArrayList<Long> time = new ArrayList(1000);
+
+    private ImageView line;
+    private Canvas canvas;
+    private Bitmap bmp;
+    private float lineLength = 200;
+
+    private int index = 0;
+
     /* dropbox */
 
     private static DbxAccountManager mDbxAcctMgr;
@@ -58,7 +89,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     private DbxPath mDbxPath;
     static final int REQUEST_LINK_TO_DBX = 0;
 
-    private TextView currentX, currentY, currentZ, currentOmega, maxX, maxY, maxZ;
+    private TextView currentX, currentY, currentZ, currentMagnitude, currentAngle, lineX, lineY;
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -79,18 +110,110 @@ public class MotionSensor extends Activity implements SensorEventListener
                 // TO DO
                 e.printStackTrace();
             }
-            mDbxPath = new DbxPath("SwerveDbx/motiondata.txt");
+            //mDbxPath = new DbxPath("SwerveDbx/motiondata.txt");
         }
+
+        line = (ImageView) findViewById(R.id.line);
+        bmp = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888);
+        canvas = new Canvas(bmp);
 
         // Get an instance of the sensor service
         mgr = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        gyro = mgr.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
-        rotationVec = mgr.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+        //accelerometer = mgr.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
+        accelerometer = mgr.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        //magnetometer = mgr.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+        //mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL);
 
-        if (!this.getPackageManager().hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE))
+        //gyro = mgr.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+
+        if (!this.getPackageManager().hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER))
         {
-            Toast.makeText(getApplicationContext(),"Gyroscope sensor is not present", Toast.LENGTH_LONG).show();
+            Toast.makeText(getApplicationContext(),"Accelerometer sensor is not present", Toast.LENGTH_LONG).show();
         }
+    }
+
+    public void drawLine(int angle)
+    {
+        Paint paint = new Paint();
+        paint.setColor(Color.BLUE);
+        paint.setStrokeWidth(4);
+        bmp.eraseColor(Color.TRANSPARENT);
+        canvas.drawLine(lineLength, lineLength * 2, lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength * 2 - lineLength * (float) Math.cos(Math.toRadians(angle)), paint);
+        line.setImageBitmap(bmp);
+        //lineX.setText(Double.toString(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle))));
+        //lineY.setText(Double.toString(lineLength * (float) Math.cos(Math.toRadians(angle))));
+    }
+
+    public void onAccelerometerSensorChange(SensorEvent event)
+    {
+        float[] g = new float[3];
+        g = event.values.clone();
+
+        float x = g[0];
+        float y = g[1];
+        float z = g[2];
+
+        long curTime = System.currentTimeMillis();
+        timestamp = curTime - startTime;
+
+        if ((curTime - lastUpdate) > 100)
+        {
+            float diffTime = curTime - lastUpdate;
+            lastUpdate = curTime;
+
+            float accMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
+
+            currentX.setText(Float.toString(x) + " m/s^2");
+            currentY.setText(Float.toString(y) + " m/s^2");
+            currentZ.setText(Float.toString(z) + " m/s^2");
+            currentMagnitude.setText(Float.toString(accMagnitude) + " m/s^2");
+
+            x /= accMagnitude;
+            y /= accMagnitude;
+            z /= accMagnitude;
+
+            int inclination = (int) Math.round(Math.toDegrees(Math.acos(z)));
+
+            int sway = (int) Math.round(Math.toDegrees(Math.atan2(x, y)));
+            float fSway = Math.round(Math.toDegrees(Math.atan2(x, y)));
+            currentAngle.setText(Integer.toString(sway) + " degrees @ time " + timestamp + "milliseconds");
+            drawLine(sway);
+
+            try
+            {
+                data.set(index, fSway);
+                time.set(index, timestamp);
+            }
+            catch(IndexOutOfBoundsException e)
+            {
+                data.add(index, fSway);
+                time.add(index, timestamp);
+            }
+            index++;
+        }
+
+        if (index >= 1000)
+        {
+            index = 0;
+            Connect dbx = new Connect()
+            {
+                @Override
+                public void onPostExecute(Boolean result)
+                {
+                    if (result == true)
+                    {
+                        System.out.println("Data sent to Dropbox");
+                    }
+                }
+            };
+            dbx.execute(data, time);
+        }
+    }
+
+    public void onGyroscopeSensorChange(SensorEvent event)
+    {
+
     }
 
     @Override
@@ -127,45 +250,40 @@ public class MotionSensor extends Activity implements SensorEventListener
     @Override
     public final void onSensorChanged(SensorEvent event)
     {
-        // This timestep's delta rotation to be multiplied by the current rotation
-        // after computing it from the gyro sample data
-        if (timestamp != 0)
+        if (event.sensor.getType() == Sensor.TYPE_LINEAR_ACCELERATION)
         {
-            final float dT = (event.timestamp - timestamp) * NS2S;
-            float axisX = event.values[0];
-            float axisY = event.values[1];
-            float axisZ = event.values[2];
-
-            float axis = (float) Math.sqrt(axisX * axisX + axisY * axisY + axisZ * axisZ);
-
-            // Normalize the rotation vector if it's big enough to get the axis
-            if (axis > EPSILON)
-            {
-                axisX /= axis;
-                axisY /= axis;
-                axisZ /= axis;
-            }
-
-            currentX.setText(Float.toString(axisX) + " rads/s");
-            currentY.setText(Float.toString(axisY) + " rads/s");
-            currentZ.setText(Float.toString(axisZ) + " rads/s");
-            currentOmega.setText(Float.toString(axis) + " rads/s");
-
-            // Integrate around this axis with the angular speed by the timestep
-            // in order to get a delta rotation from this sample over the
-            // timestep. We will convert this axis-angle representation of the
-            // delta rotation into a quaternion before turning it into the
-            // rotation matrix.
-            float thetaOverTwo = axis * dT / 2.0f;
-
-            float sinThetaOverTwo = (float) Math.sin(thetaOverTwo);
-            float cosThetaOverTwo = (float) Math.cos(thetaOverTwo);
-
-            deltaRotationVector[0] = sinThetaOverTwo * axisX;
-            deltaRotationVector[1] = sinThetaOverTwo * axisY;
-            deltaRotationVector[2] = sinThetaOverTwo * axisZ;
-            deltaRotationVector[3] = cosThetaOverTwo;
+            mGravity = event.values;
+            onAccelerometerSensorChange(event);
         }
+        else if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER)
+        {
+            onAccelerometerSensorChange(event);
+        }
+        else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD)
+        {
+            // magnetometer
+        }
+        else if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE)
+        {
+            onGyroscopeSensorChange(event);
+        }
+
+        /*
+        // Integrate around this axis with the angular speed by the timestep
+        // in order to get a delta rotation from this sample over the
+        // timestep. We will convert this axis-angle representation of the
+        // delta rotation into a quaternion before turning it into the
+        // rotation matrix.
+        float thetaOverTwo = axis * dT / 2.0f;
+
+        float sinThetaOverTwo = (float) Math.sin(thetaOverTwo);
+        float cosThetaOverTwo = (float) Math.cos(thetaOverTwo);
+
+        deltaRotationVector[0] = sinThetaOverTwo * axisX;
+        deltaRotationVector[1] = sinThetaOverTwo * axisY;
+        deltaRotationVector[2] = sinThetaOverTwo * axisZ;
+        deltaRotationVector[3] = cosThetaOverTwo;
+
         timestamp = event.timestamp;
         float[] deltaRotationMatrix = new float[9];
         SensorManager.getRotationMatrixFromVector(deltaRotationMatrix, deltaRotationVector);
@@ -179,6 +297,7 @@ public class MotionSensor extends Activity implements SensorEventListener
         // User code should concatenate the delta rotation we computed with the current rotation
         // in order to get the updated rotation.
         // rotationCurrent = rotationCurrent * deltaRotationMatrix;
+    */
     }
 
     @Override
@@ -186,7 +305,8 @@ public class MotionSensor extends Activity implements SensorEventListener
     {
         // Register a listener for the sensor.
         super.onResume();
-        mgr.registerListener(this, gyro, SensorManager.SENSOR_DELAY_NORMAL);
+        mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+        //mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL);
     }
 
     @Override
@@ -212,35 +332,15 @@ public class MotionSensor extends Activity implements SensorEventListener
         currentZ.setText(Float.toString(deltaZ));
     }
 
-    public void displayMaxValues()
-    {
-        if (deltaX > deltaXMax)
-        {
-            deltaXMax = deltaX;
-            maxX.setText(Float.toString(deltaXMax));
-        }
-        if (deltaY > deltaYMax)
-        {
-            deltaYMax = deltaY;
-            maxY.setText(Float.toString(deltaYMax));
-        }
-        if (deltaZ > 0)
-        {
-            deltaZMax = deltaZ;
-            maxZ.setText(Float.toString(deltaZMax));
-        }
-    }
-
     public void initializeViews()
     {
         currentX = (TextView) findViewById(R.id.currentX);
         currentY = (TextView) findViewById(R.id.currentY);
         currentZ = (TextView) findViewById(R.id.currentZ);
-        currentOmega = (TextView) findViewById(R.id.currentOmega);
-
-        maxX = (TextView) findViewById(R.id.maxX);
-        maxY = (TextView) findViewById(R.id.maxY);
-        maxZ = (TextView) findViewById(R.id.maxZ);
+        currentMagnitude = (TextView) findViewById(R.id.currentOmega);
+        currentAngle = (TextView) findViewById(R.id.angle);
+        //lineX = (TextView) findViewById(R.id.lineX);
+        //lineY = (TextView) findViewById(R.id.lineY);
 
         for (int i = 0; i < currentRotation.length; i++)
         {
@@ -248,14 +348,41 @@ public class MotionSensor extends Activity implements SensorEventListener
         }
     }
 
-    public void linkToDropbox()
+    public void detectTilt()
     {
-        mDbxAcctMgr.unlink();
-        mDbxAcctMgr.startLink(this, REQUEST_LINK_TO_DBX);
-        if (mDbxAcctMgr.hasLinkedAccount())
+        float[] R = new float[9];
+        float[] I = new float[9];
+
+        boolean success = SensorManager.getRotationMatrix(R, I, mGravity, mGeomagnetic);
+
+        if (success)
         {
-            mDbxPath = new DbxPath("Swerve/motiondata.txt");
+            float[] orientation = new float[3];
+            SensorManager.getOrientation(R, orientation);
+
+            pitch = orientation[1];
+            roll = orientation[2];
+
+            inclineGravity = mGravity.clone();
+
+            double norm_Of_g = Math.sqrt(inclineGravity[0] * inclineGravity[0] + inclineGravity[1] * inclineGravity[1] + inclineGravity[2] * inclineGravity[2]);
+
+            // Normalize the accelerometer vector
+            inclineGravity[0] = (float) (inclineGravity[0] / norm_Of_g);
+            inclineGravity[1] = (float) (inclineGravity[1] / norm_Of_g);
+            inclineGravity[2] = (float) (inclineGravity[2] / norm_Of_g);
+
+            //Checks if device is flat on ground or not
+            int inclination = (int) Math.round(Math.toDegrees(Math.acos(inclineGravity[2])));
+
+            Float objPitch = new Float(pitch);
+            Float objZero = new Float(0.0);
+            Float objZeroPointTwo = new Float(0.2);
+            Float objZeroPointTwoNegative = new Float(-0.2);
+
+            int objPitchZeroResult = objPitch.compareTo(objZero);
+            int objPitchZeroPointTwoResult = objZeroPointTwo.compareTo(objPitch);
+            int objPitchZeroPointTwoNegativeResult = objPitch.compareTo(objZeroPointTwoNegative);
         }
     }
-
 }

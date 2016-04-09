@@ -67,10 +67,6 @@ public class Accelerometer extends Activity implements SensorEventListener
         currentY = (TextView) findViewById(R.id.currentY);
         currentZ = (TextView) findViewById(R.id.currentZ);
         //       currentZ3 = (TextView) findViewById(R.id.currentZ3);
-
-        maxX = (TextView) findViewById(R.id.maxX);
-        maxY = (TextView) findViewById(R.id.maxY);
-        maxZ = (TextView) findViewById(R.id.maxZ);
     }
 
     //onResume() register the accelerometer for listening the events
@@ -102,7 +98,7 @@ public class Accelerometer extends Activity implements SensorEventListener
         // display the current x,y,z accelerometer values
         displayCurrentValues();
         // display the max x,y,z accelerometer values
-        displayMaxValues();
+        //displayMaxValues();
 
         // get the change of the x,y,z values of the accelerometer
         deltaX = Math.abs(lastX - event.values[0]);
@@ -140,7 +136,7 @@ public class Accelerometer extends Activity implements SensorEventListener
         currentZ.setText(Float.toString(deltaZ));
         //   currentZ3.setText(Float.toString(deltaZ3));
     }
-
+/*
     // display the max x,y,z accelerometer values
     public void displayMaxValues()
     {
@@ -159,11 +155,12 @@ public class Accelerometer extends Activity implements SensorEventListener
             deltaZMax = deltaZ;
             maxZ.setText(Float.toString(deltaZMax));
         }
- */
+ /
         if (deltaZ > 0)
         {
             deltaZMax = deltaZ3;
             maxZ.setText(Float.toString(deltaZMax));
         }
     }
+*/
 }
