@@ -36,7 +36,8 @@ public class Dropboxer extends Activity //possibly extend async instead
 
         try
         {
-            mDbxAcctMgr = DbxAccountManager.getInstance(getApplicationContext(), "KEY", "SECRET");
+            //mDbxAcctMgr = DbxAccountManager.getInstance(getApplicationContext(), "KEY", "SECRET");
+            mDbxAcctMgr = DbxAccountManager.getInstance(getApplicationContext(), "utyphk8d2i17a6v", "011iw45c0g7r1jm");
             if (!mDbxAcctMgr.hasLinkedAccount())
             {
                 Toast.makeText(this, "Dropbox is not connected. Attempting to connect...", Toast.LENGTH_LONG).show();

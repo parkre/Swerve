@@ -96,6 +96,8 @@ public class MotionSensor extends Activity implements SensorEventListener
     {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_motionsensor);
+
+        line = (ImageView) findViewById(R.id.line);
         initializeViews();
 
         mDbxAcctMgr = Dropboxer.getDbxAccountManager();
@@ -113,7 +115,6 @@ public class MotionSensor extends Activity implements SensorEventListener
             //mDbxPath = new DbxPath("SwerveDbx/motiondata.txt");
         }
 
-        line = (ImageView) findViewById(R.id.line);
         bmp = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888);
         canvas = new Canvas(bmp);
 
@@ -133,13 +134,19 @@ public class MotionSensor extends Activity implements SensorEventListener
         }
     }
 
-    public void drawLine(int angle)
+    public void drawLine(int angle, int pitch)
     {
         Paint paint = new Paint();
-        paint.setColor(Color.BLUE);
-        paint.setStrokeWidth(4);
         bmp.eraseColor(Color.TRANSPARENT);
-        canvas.drawLine(lineLength, lineLength * 2, lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength * 2 - lineLength * (float) Math.cos(Math.toRadians(angle)), paint);
+        paint.setColor(Color.BLACK);
+        canvas.drawLine(0, 200, 400, 200, paint);
+        paint.setStrokeWidth(4);
+        paint.setColor(Color.DKGRAY);
+        //canvas.drawPoint(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength * 2 - lineLength * (float) Math.sin(Math.toRadians(pitch)), paint);
+        canvas.drawPoint(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength - lineLength * (float) Math.sin(Math.toRadians(pitch)), paint);
+        paint.setColor(Color.BLUE);
+        //canvas.drawLine(lineLength, lineLength * 2, lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength * 2 - lineLength * (float) Math.cos(Math.toRadians(angle)), paint);
+        canvas.drawLine(lineLength, lineLength, lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength - lineLength * (float) Math.cos(Math.toRadians(angle)), paint);
         line.setImageBitmap(bmp);
         //lineX.setText(Double.toString(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle))));
         //lineY.setText(Double.toString(lineLength * (float) Math.cos(Math.toRadians(angle))));
@@ -163,22 +170,35 @@ public class MotionSensor extends Activity implements SensorEventListener
             lastUpdate = curTime;
 
             float accMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
+            float xyMagnitude = (float) Math.sqrt(x*x + y*y);
+            float zyMagnitude = (float) Math.sqrt(y*y + z*z);
 
             currentX.setText(Float.toString(x) + " m/s^2");
             currentY.setText(Float.toString(y) + " m/s^2");
             currentZ.setText(Float.toString(z) + " m/s^2");
             currentMagnitude.setText(Float.toString(accMagnitude) + " m/s^2");
 
-            x /= accMagnitude;
-            y /= accMagnitude;
-            z /= accMagnitude;
+            if (xyMagnitude < 8)
+            {
+                x /= accMagnitude;
+                y /= accMagnitude;
+                z /= accMagnitude;
+            }
+            else
+            {
+                x *= 100;
+                y *= 100;
+                z *= 100;
+            }
 
             int inclination = (int) Math.round(Math.toDegrees(Math.acos(z)));
+            int pitch = (int) Math.round(Math.toDegrees(Math.atan2(z, y)));
+            float fPitch = Math.round(Math.toDegrees(Math.atan2(z, y)));
 
             int sway = (int) Math.round(Math.toDegrees(Math.atan2(x, y)));
             float fSway = Math.round(Math.toDegrees(Math.atan2(x, y)));
-            currentAngle.setText(Integer.toString(sway) + " degrees @ time " + timestamp + "milliseconds");
-            drawLine(sway);
+            currentAngle.setText(Integer.toString(sway) + " degrees @ time " + timestamp + "milliseconds | Pitch = " + Integer.toString(pitch));
+            drawLine(sway, pitch);
 
             try
             {
@@ -193,7 +213,7 @@ public class MotionSensor extends Activity implements SensorEventListener
             index++;
         }
 
-        if (index >= 1000)
+        if (index >= 100)
         {
             index = 0;
             Connect dbx = new Connect()

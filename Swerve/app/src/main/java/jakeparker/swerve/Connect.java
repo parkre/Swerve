@@ -78,7 +78,7 @@ public class Connect extends AsyncTask<ArrayList<?>, Void, Boolean>
             }
             for (int i = 0; i < motion.size(); i++)
             {
-                mDbxFile.appendString(time.get(i) + ": " + motion.get(i) + ", ");
+                mDbxFile.appendString(time.get(i) + ": " + motion.get(i) + "\n");
             }
             mDbxFile.close();
         }
