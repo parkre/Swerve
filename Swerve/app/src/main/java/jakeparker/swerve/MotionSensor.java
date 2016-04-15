@@ -52,6 +52,10 @@ public class MotionSensor extends Activity implements SensorEventListener
     private float[] initialRotationMatrix;
     private float[] currentRotationMatrixCalibrated;
     private float[] currentRotation = new float[9];
+    private float[] msSway = new float[10];
+    private float[] msPitch = new float[10];
+    private float[] ms3d = new float[10];
+    private int msIndex = 0;
 
     private float EPSILON = (float) Math.pow(1, -8);
 
@@ -73,6 +77,8 @@ public class MotionSensor extends Activity implements SensorEventListener
     float roll;
 
     private ArrayList<Float> data = new ArrayList(1000);
+    private ArrayList<Float> pitchData = new ArrayList(1000);
+    private ArrayList<Float> d3Angles = new ArrayList(1000);
     private ArrayList<Long> time = new ArrayList(1000);
 
     private ImageView line;
@@ -137,16 +143,15 @@ public class MotionSensor extends Activity implements SensorEventListener
     public void drawLine(int angle, int pitch)
     {
         Paint paint = new Paint();
-        bmp.eraseColor(Color.TRANSPARENT);
+        //bmp.eraseColor(Color.TRANSPARENT);
         paint.setColor(Color.BLACK);
         canvas.drawLine(0, 200, 400, 200, paint);
-        paint.setStrokeWidth(4);
+        canvas.drawLine(200, 0, 200, 400, paint);
+        paint.setStrokeWidth(6);
         paint.setColor(Color.DKGRAY);
-        //canvas.drawPoint(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength * 2 - lineLength * (float) Math.sin(Math.toRadians(pitch)), paint);
         canvas.drawPoint(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength - lineLength * (float) Math.sin(Math.toRadians(pitch)), paint);
-        paint.setColor(Color.BLUE);
-        //canvas.drawLine(lineLength, lineLength * 2, lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength * 2 - lineLength * (float) Math.cos(Math.toRadians(angle)), paint);
-        canvas.drawLine(lineLength, lineLength, lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength - lineLength * (float) Math.cos(Math.toRadians(angle)), paint);
+        //paint.setColor(Color.BLUE);
+        //canvas.drawLine(lineLength, lineLength, lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength - lineLength * (float) Math.cos(Math.toRadians(angle)), paint);
         line.setImageBitmap(bmp);
         //lineX.setText(Double.toString(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle))));
         //lineY.setText(Double.toString(lineLength * (float) Math.cos(Math.toRadians(angle))));
@@ -197,23 +202,40 @@ public class MotionSensor extends Activity implements SensorEventListener
 
             int sway = (int) Math.round(Math.toDegrees(Math.atan2(x, y)));
             float fSway = Math.round(Math.toDegrees(Math.atan2(x, y)));
-            currentAngle.setText(Integer.toString(sway) + " degrees @ time " + timestamp + "milliseconds | Pitch = " + Integer.toString(pitch));
+
+            float normMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
+            int d3Angle = (int) Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
+            ms3d[msIndex] = Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
+
+            msSway[msIndex] = fSway;
+            msPitch[msIndex] = fPitch;
+            msIndex++;
+
+            currentAngle.setText("3D Angle: " + Integer.toString(d3Angle) + " degrees");
             drawLine(sway, pitch);
 
-            try
+            if (msIndex == 10)
             {
-                data.set(index, fSway);
-                time.set(index, timestamp);
+                float avgSway = calcAvgSway(msSway);
+                float avg3d = calcAvgSway(ms3d);
+                try
+                {
+                    data.set(index, avgSway);
+                    d3Angles.set(index, avg3d);
+                    time.set(index, timestamp);
+                } catch (IndexOutOfBoundsException e)
+                {
+                    data.add(index, avgSway);
+                    d3Angles.add(index, avg3d);
+                    time.add(index, timestamp);
+                }
+                index++;
+                msIndex = 0;
+                //drawLine((int) avgSway, (int) avgPitch);
             }
-            catch(IndexOutOfBoundsException e)
-            {
-                data.add(index, fSway);
-                time.add(index, timestamp);
-            }
-            index++;
         }
 
-        if (index >= 100)
+        if (index >= 1000)
         {
             index = 0;
             Connect dbx = new Connect()
@@ -227,8 +249,18 @@ public class MotionSensor extends Activity implements SensorEventListener
                     }
                 }
             };
-            dbx.execute(data, time);
+            dbx.execute(data, d3Angles, time);
         }
+    }
+
+    public float calcAvgSway(float[] msSway)
+    {
+        float sum = 0;
+        for (float sway : msSway)
+        {
+            sum += sway;
+        }
+        return sum / msSway.length;
     }
 
     public void onGyroscopeSensorChange(SensorEvent event)

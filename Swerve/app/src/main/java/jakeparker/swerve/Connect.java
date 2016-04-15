@@ -60,7 +60,8 @@ public class Connect extends AsyncTask<ArrayList<?>, Void, Boolean>
     protected Boolean doInBackground(ArrayList<?>... data)
     {
         ArrayList<?> motion = data[0];
-        ArrayList<?> time = data[1];
+        ArrayList<?> d3Angle = data[1];
+        ArrayList<?> time = data[2];
 
         DbxFile mDbxFile = null;
         //dbxFs = Dropboxer.getDbxFs();
@@ -74,11 +75,11 @@ public class Connect extends AsyncTask<ArrayList<?>, Void, Boolean>
             else
             {
                 mDbxFile = dbxFs.create(mDbxPath);
-                mDbxFile.appendString("time(milliseconds): angle\n\n");
+                mDbxFile.appendString("time(milliseconds): xyAngle, 3dAngle\n\n");
             }
             for (int i = 0; i < motion.size(); i++)
             {
-                mDbxFile.appendString(time.get(i) + ": " + motion.get(i) + "\n");
+                mDbxFile.appendString(time.get(i) + ": " + motion.get(i) + " , " + d3Angle.get(i) + "\n");
             }
             mDbxFile.close();
         }
