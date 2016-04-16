@@ -223,7 +223,8 @@ public class MotionSensor extends Activity implements SensorEventListener
                     data.set(index, avgSway);
                     d3Angles.set(index, avg3d);
                     time.set(index, timestamp);
-                } catch (IndexOutOfBoundsException e)
+                }
+                catch (IndexOutOfBoundsException e)
                 {
                     data.add(index, avgSway);
                     d3Angles.add(index, avg3d);
