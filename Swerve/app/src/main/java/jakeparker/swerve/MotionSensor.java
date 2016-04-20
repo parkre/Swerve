@@ -87,6 +87,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     private float lineLength = 200;
 
     private int index = 0;
+    private long timeLimit = 300000L;
 
     /* dropbox */
 
@@ -236,7 +237,7 @@ public class MotionSensor extends Activity implements SensorEventListener
             }
         }
 
-        if (index >= 1000)
+        if (index >= 20)
         {
             index = 0;
             Connect dbx = new Connect()
@@ -251,6 +252,13 @@ public class MotionSensor extends Activity implements SensorEventListener
                 }
             };
             dbx.execute(data, d3Angles, time);
+        }
+
+        if (curTime - startTime > timeLimit)
+        {
+            super.onPause();
+            mgr.unregisterListener(this);
+            Toast.makeText(this, "5 minute time limit is up!", Toast.LENGTH_LONG).show();
         }
     }
 

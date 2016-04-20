@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.Toast;
 import android.content.Intent;
 
@@ -36,7 +37,7 @@ public class Dropboxer extends Activity //possibly extend async instead
 
         try
         {
-            mDbxAcctMgr = DbxAccountManager.getInstance(getApplicationContext(), "KEY", "SECRET");
+            mDbxAcctMgr = DbxAccountManager.getInstance(getApplicationContext(), "utyphk8d2i17a6v", "011iw45c0g7r1jm");
             if (!mDbxAcctMgr.hasLinkedAccount())
             {
                 Toast.makeText(this, "Dropbox is not connected. Attempting to connect...", Toast.LENGTH_LONG).show();
@@ -47,17 +48,29 @@ public class Dropboxer extends Activity //possibly extend async instead
                 Toast.makeText(this, "Dropbox is connected", Toast.LENGTH_LONG).show();
             }
             dbxFs = DbxFileSystem.forAccount(mDbxAcctMgr.getLinkedAccount());
-            mDbxPath = new DbxPath("SwerveDbx/swervedata.txt");
+            //mDbxPath = new DbxPath("SwerveDbx/swervedata.txt");
         }
         catch (Exception e)
         {
             // logic
         }
-        go(null);
+        //go(null);
     }
 
     public void go(View v)
     {
+        String name = ((EditText) findViewById(R.id.name)).getEditableText().toString();
+        if (name != null)
+        {
+            try
+            {
+                mDbxPath = new DbxPath("SwerveDbx/" + name + "/swervedata.txt");
+            }
+            catch (Exception e)
+            {
+                // logic
+            }
+        }
         Intent intent = new Intent(this, MotionSensor.class);
         startActivity(intent);
     }

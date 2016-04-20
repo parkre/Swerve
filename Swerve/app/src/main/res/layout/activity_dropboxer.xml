@@ -13,13 +13,21 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
+        android:layout_marginTop="20dp"
         android:layout_marginBottom="10dp"
-        android:text="Connecting to Dropbox..."
-        android:textSize="60sp" />
+        android:text="Enter your name"
+        android:textSize="20sp" />
+
+    <EditText
+        android:id="@+id/name"
+        android:hint="Name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
 
     <Button
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="GO"
         android:onClick="go" />
+
 </LinearLayout>
