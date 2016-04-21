@@ -2,9 +2,12 @@ package jakeparker.swerve;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.view.KeyEvent;
 import android.view.View;
+import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 import android.content.Intent;
 
@@ -27,13 +30,31 @@ public class Dropboxer extends Activity //possibly extend async instead
     private static DbxPath mDbxPath;
     static final int REQUEST_LINK_TO_DBX = 0;
 
-    public static final long startTime = System.currentTimeMillis();
+    public static long startTime = 0;
+    public String name = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_dropboxer);
+
+
+        EditText editName = (EditText) findViewById(R.id.name);
+        editName.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event)
+            {
+                boolean handled = false;
+                if (actionId == EditorInfo.IME_ACTION_GO)
+                {
+                    go(null);
+                    handled = true;
+                }
+                return handled;
+            }
+        });
+
 
         try
         {
@@ -59,7 +80,7 @@ public class Dropboxer extends Activity //possibly extend async instead
 
     public void go(View v)
     {
-        String name = ((EditText) findViewById(R.id.name)).getEditableText().toString();
+        name = ((EditText) findViewById(R.id.name)).getEditableText().toString();
         if (name != null)
         {
             try
@@ -72,6 +93,7 @@ public class Dropboxer extends Activity //possibly extend async instead
             }
         }
         Intent intent = new Intent(this, MotionSensor.class);
+        startTime = System.currentTimeMillis();
         startActivity(intent);
     }
 

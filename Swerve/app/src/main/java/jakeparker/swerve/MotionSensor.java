@@ -42,7 +42,6 @@ public class MotionSensor extends Activity implements SensorEventListener
     private Sensor magnetometer;
     private Sensor rotationVec;
 
-    private static final float NS2S = 1.0f / 1000000000.0f;
     private final float[] deltaRotationVector = new float[4];
     private long timestamp;
     private long lastUpdate = 0;
@@ -57,17 +56,11 @@ public class MotionSensor extends Activity implements SensorEventListener
     private float[] ms3d = new float[10];
     private int msIndex = 0;
 
-    private float EPSILON = (float) Math.pow(1, -8);
+    private ArrayList<Float> msSway1 = new ArrayList();
+    private ArrayList<Float> msPitch1 = new ArrayList();
+    private ArrayList<Float> ms3d1 = new ArrayList();
 
-    private float lastX, lastY, lastZ;
-
-    private float deltaX = 0;
-    private float deltaY = 0;
-    private float deltaZ = 0;
-
-    private float deltaXMax = 0;
-    private float deltaYMax = 0;
-    private float deltaZMax = 0;
+    /* change to process as much data as possible each second, then find avg for that second */
 
     float[] inclineGravity = new float[3];
     float[] mGravity;
@@ -76,9 +69,8 @@ public class MotionSensor extends Activity implements SensorEventListener
     float pitch;
     float roll;
 
-    private ArrayList<Float> data = new ArrayList(1000);
-    private ArrayList<Float> pitchData = new ArrayList(1000);
-    private ArrayList<Float> d3Angles = new ArrayList(1000);
+    private ArrayList<Float> data3d = new ArrayList(1000);
+    private ArrayList<Float> dataXY = new ArrayList(1000);
     private ArrayList<Long> time = new ArrayList(1000);
 
     private ImageView line;
@@ -87,7 +79,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     private float lineLength = 200;
 
     private int index = 0;
-    private long timeLimit = 300000L;
+    private long timeLimit = 300000L; // 5 minutes
 
     /* dropbox */
 
@@ -124,13 +116,14 @@ public class MotionSensor extends Activity implements SensorEventListener
 
         bmp = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888);
         canvas = new Canvas(bmp);
-
+        
         // Get an instance of the sensor service
         mgr = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        //accelerometer = mgr.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
         accelerometer = mgr.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        //accelerometer = mgr.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
+
         //magnetometer = mgr.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-        mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+        //mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
         //mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL);
 
         //gyro = mgr.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
@@ -144,15 +137,12 @@ public class MotionSensor extends Activity implements SensorEventListener
     public void drawLine(int angle, int pitch)
     {
         Paint paint = new Paint();
-        //bmp.eraseColor(Color.TRANSPARENT);
         paint.setColor(Color.BLACK);
         canvas.drawLine(0, 200, 400, 200, paint);
         canvas.drawLine(200, 0, 200, 400, paint);
         paint.setStrokeWidth(6);
         paint.setColor(Color.DKGRAY);
         canvas.drawPoint(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength - lineLength * (float) Math.sin(Math.toRadians(pitch)), paint);
-        //paint.setColor(Color.BLUE);
-        //canvas.drawLine(lineLength, lineLength, lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength - lineLength * (float) Math.cos(Math.toRadians(angle)), paint);
         line.setImageBitmap(bmp);
         //lineX.setText(Double.toString(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle))));
         //lineY.setText(Double.toString(lineLength * (float) Math.cos(Math.toRadians(angle))));
@@ -170,72 +160,101 @@ public class MotionSensor extends Activity implements SensorEventListener
         long curTime = System.currentTimeMillis();
         timestamp = curTime - startTime;
 
-        if ((curTime - lastUpdate) > 100)
+        float diffTime = curTime - lastUpdate;
+
+        float accMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
+        float xyMagnitude = (float) Math.sqrt(x*x + y*y);
+        float zyMagnitude = (float) Math.sqrt(y*y + z*z);
+
+        currentX.setText(Float.toString(x) + " m/s^2");
+        currentY.setText(Float.toString(y) + " m/s^2");
+        currentZ.setText(Float.toString(z) + " m/s^2");
+        currentMagnitude.setText(Float.toString(accMagnitude) + " m/s^2");
+
+        if (xyMagnitude < 8)
         {
-            float diffTime = curTime - lastUpdate;
-            lastUpdate = curTime;
-
-            float accMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
-            float xyMagnitude = (float) Math.sqrt(x*x + y*y);
-            float zyMagnitude = (float) Math.sqrt(y*y + z*z);
-
-            currentX.setText(Float.toString(x) + " m/s^2");
-            currentY.setText(Float.toString(y) + " m/s^2");
-            currentZ.setText(Float.toString(z) + " m/s^2");
-            currentMagnitude.setText(Float.toString(accMagnitude) + " m/s^2");
-
-            if (xyMagnitude < 8)
-            {
-                x /= accMagnitude;
-                y /= accMagnitude;
-                z /= accMagnitude;
-            }
-            else
-            {
-                x *= 100;
-                y *= 100;
-                z *= 100;
-            }
-
-            int inclination = (int) Math.round(Math.toDegrees(Math.acos(z)));
-            int pitch = (int) Math.round(Math.toDegrees(Math.atan2(z, y)));
-            float fPitch = Math.round(Math.toDegrees(Math.atan2(z, y)));
-
-            int sway = (int) Math.round(Math.toDegrees(Math.atan2(x, y)));
-            float fSway = Math.round(Math.toDegrees(Math.atan2(x, y)));
-
-            float normMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
-            int d3Angle = (int) Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
-            ms3d[msIndex] = Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
-
-            msSway[msIndex] = fSway;
-            msPitch[msIndex] = fPitch;
-            msIndex++;
-
-            currentAngle.setText("3D Angle: " + Integer.toString(d3Angle) + " degrees");
-            drawLine(sway, pitch);
-
-            if (msIndex == 10)
-            {
-                float avgSway = calcAvgSway(msSway);
-                float avg3d = calcAvgSway(ms3d);
-                try
-                {
-                    data.set(index, avgSway);
-                    d3Angles.set(index, avg3d);
-                    time.set(index, timestamp);
-                }
-                catch (IndexOutOfBoundsException e)
-                {
-                    data.add(index, avgSway);
-                    d3Angles.add(index, avg3d);
-                    time.add(index, timestamp);
-                }
-                index++;
-                msIndex = 0;
-                //drawLine((int) avgSway, (int) avgPitch);
-            }
+            x /= accMagnitude;
+            y /= accMagnitude;
+            z /= accMagnitude;
         }
+        else
+        {
+            x *= 100;
+            y *= 100;
+            z *= 100;
+        }
+
+        int inclination = (int) Math.round(Math.toDegrees(Math.acos(z)));
+        int pitch = (int) Math.round(Math.toDegrees(Math.atan2(z, y)));
+        float fPitch = Math.round(Math.toDegrees(Math.atan2(z, y)));
+
+        int sway = (int) Math.round(Math.toDegrees(Math.atan2(x, y)));
+        float fSway = Math.round(Math.toDegrees(Math.atan2(x, y)));
+
+        float normMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
+        int d3Angle = (int) Math.round(Math.toDegrees(Math.acos(y / normMagnitude)));
+        float f3dAngle = Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
+        ms3d[msIndex] = Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
+
+        msSway[msIndex] = fSway;
+        msPitch[msIndex] = fPitch;
+        msIndex++;
+
+        ms3d1.add(f3dAngle);
+        msSway1.add(fSway);
+        msPitch1.add(fPitch);
+
+        currentAngle.setText("3D Angle: " + Integer.toString(d3Angle) + " degrees");
+        drawLine(sway, pitch);
+
+        /*
+        if (msIndex == 10)
+        {
+            float avgSway = calcAvgSway(msSway);
+            float avg3d = calcAvgSway(ms3d);
+            try
+            {
+                data.set(index, avgSway);
+                d3Angles.set(index, avg3d);
+                time.set(index, timestamp);
+            }
+            catch (IndexOutOfBoundsException e)
+            {
+                data.add(index, avgSway);
+                d3Angles.add(index, avg3d);
+                time.add(index, timestamp);
+            }
+            index++;
+            msIndex = 0;
+            //drawLine((int) avgSway, (int) avgPitch);
+        }
+        */
+
+        if (diffTime >= 100)
+        {
+            lastUpdate = curTime;
+            float avg3d = calcAvg(ms3d1);
+            float avgSway = calcAvg(msSway1);
+            try
+            {
+                data3d.set(index, avg3d);
+                dataXY.set(index, avgSway);
+                time.set(index, timestamp);
+            }
+            catch (IndexOutOfBoundsException e)
+            {
+                data3d.add(index, avg3d);
+                dataXY.add(index, avgSway);
+                time.add(index, timestamp);
+            }
+            index++;
+            msIndex = 0;
+            ms3d1.clear();
+            msSway1.clear();
+            msPitch1.clear();
+            //drawLine((int) avgSway, (int) avgPitch);
+        }
+        //}
 
         if (index >= 20)
         {
@@ -251,25 +270,26 @@ public class MotionSensor extends Activity implements SensorEventListener
                     }
                 }
             };
-            dbx.execute(data, d3Angles, time);
+            dbx.execute(data3d, dataXY, time);
         }
 
         if (curTime - startTime > timeLimit)
         {
             super.onPause();
             mgr.unregisterListener(this);
+            displayCleanValues();
             Toast.makeText(this, "5 minute time limit is up!", Toast.LENGTH_LONG).show();
         }
     }
 
-    public float calcAvgSway(float[] msSway)
+    public float calcAvg(ArrayList<Float> data)
     {
-        float sum = 0;
-        for (float sway : msSway)
+        float dataSum = 0;
+        for (float d : data)
         {
-            sum += sway;
+            dataSum += d;
         }
-        return sum / msSway.length;
+        return dataSum / data.size();
     }
 
     public void onGyroscopeSensorChange(SensorEvent event)
@@ -280,13 +300,6 @@ public class MotionSensor extends Activity implements SensorEventListener
     @Override
     public final void onAccuracyChanged(Sensor sensor, int accuracy) {
         // Do something if sensor accuracy changes.
-    }
-
-    private void calculateInitialOrientation()
-    {
-    //    hasInitialOrientation = SensorManager.getRotationMatrix(
-    //            initialRotationMatrix, null, acceleration, magnetic);
-
     }
 
     private float[] calculateNewRotationMatrix(float[] a, float[] b)
@@ -328,43 +341,11 @@ public class MotionSensor extends Activity implements SensorEventListener
         {
             onGyroscopeSensorChange(event);
         }
-
-        /*
-        // Integrate around this axis with the angular speed by the timestep
-        // in order to get a delta rotation from this sample over the
-        // timestep. We will convert this axis-angle representation of the
-        // delta rotation into a quaternion before turning it into the
-        // rotation matrix.
-        float thetaOverTwo = axis * dT / 2.0f;
-
-        float sinThetaOverTwo = (float) Math.sin(thetaOverTwo);
-        float cosThetaOverTwo = (float) Math.cos(thetaOverTwo);
-
-        deltaRotationVector[0] = sinThetaOverTwo * axisX;
-        deltaRotationVector[1] = sinThetaOverTwo * axisY;
-        deltaRotationVector[2] = sinThetaOverTwo * axisZ;
-        deltaRotationVector[3] = cosThetaOverTwo;
-
-        timestamp = event.timestamp;
-        float[] deltaRotationMatrix = new float[9];
-        SensorManager.getRotationMatrixFromVector(deltaRotationMatrix, deltaRotationVector);
-
-        for (int i = 0; i < deltaRotationMatrix.length; i++)
-        {
-            currentRotation[i] += deltaRotationMatrix[i];
-            //Log.d("CURRENT/DELTA", "Current["+i+"]="+currentRotation[i]+"\tDelta="+deltaRotationMatrix[i]);
-        }
-
-        // User code should concatenate the delta rotation we computed with the current rotation
-        // in order to get the updated rotation.
-        // rotationCurrent = rotationCurrent * deltaRotationMatrix;
-    */
     }
 
     @Override
     protected void onResume()
     {
-        // Register a listener for the sensor.
         super.onResume();
         mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
         //mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL);
@@ -380,17 +361,9 @@ public class MotionSensor extends Activity implements SensorEventListener
 
     public void displayCleanValues()
     {
-        currentX.setText("0.0 rad/s");
-        currentY.setText("0.0 rad/s");
-        currentZ.setText("0.0 rad/s");
-    }
-
-    // display the current x,y,z accelerometer values
-    public void displayCurrentValues()
-    {
-        currentX.setText(Float.toString(deltaX));
-        currentY.setText(Float.toString(deltaY));
-        currentZ.setText(Float.toString(deltaZ));
+        currentX.setText("–");
+        currentY.setText("–");
+        currentZ.setText("–");
     }
 
     public void initializeViews()
@@ -400,8 +373,6 @@ public class MotionSensor extends Activity implements SensorEventListener
         currentZ = (TextView) findViewById(R.id.currentZ);
         currentMagnitude = (TextView) findViewById(R.id.currentOmega);
         currentAngle = (TextView) findViewById(R.id.angle);
-        //lineX = (TextView) findViewById(R.id.lineX);
-        //lineY = (TextView) findViewById(R.id.lineY);
 
         for (int i = 0; i < currentRotation.length; i++)
         {
