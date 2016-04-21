@@ -59,8 +59,8 @@ public class Connect extends AsyncTask<ArrayList<?>, Void, Boolean>
     @Override
     protected Boolean doInBackground(ArrayList<?>... data)
     {
-        ArrayList<?> motion = data[0];
-        ArrayList<?> d3Angle = data[1];
+        ArrayList<?> data3d = data[0];
+        ArrayList<?> dataXY = data[1];
         ArrayList<?> time = data[2];
 
         DbxFile mDbxFile = null;
@@ -68,18 +68,18 @@ public class Connect extends AsyncTask<ArrayList<?>, Void, Boolean>
         mDbxPath = Dropboxer.getDbxPath();
         try
         {
-            DbxFileSystem dbxFs = DbxFileSystem.forAccount(Dropboxer.mDbxAcctMgr.getLinkedAccount());
+            DbxFileSystem dbxFs = DbxFileSystem.forAccount(Dropboxer.getDbxAccountManager().getLinkedAccount());
             if (dbxFs.isFile(mDbxPath)) {
                 mDbxFile = dbxFs.open(mDbxPath);
             }
             else
             {
                 mDbxFile = dbxFs.create(mDbxPath);
-                mDbxFile.appendString("time(milliseconds): xyAngle, 3dAngle\n\n");
+                mDbxFile.appendString("time(milliseconds): 3d, XY\n\n");
             }
-            for (int i = 0; i < motion.size(); i++)
+            for (int i = 0; i < data3d.size(); i++)
             {
-                mDbxFile.appendString(time.get(i) + ": " + motion.get(i) + " , " + d3Angle.get(i) + "\n");
+                mDbxFile.appendString(time.get(i) + ": " + data3d.get(i) + " , " + dataXY.get(i) + "\n");
             }
             mDbxFile.close();
         }

@@ -89,6 +89,14 @@
         android:text="0 degrees"
         android:textSize="15sp" />
 
+    <TextView
+        android:id="@+id/time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:text="0 ms"
+        android:textSize="15sp" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

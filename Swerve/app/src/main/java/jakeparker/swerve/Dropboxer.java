@@ -25,12 +25,12 @@ import org.json.JSONArray;
  */
 public class Dropboxer extends Activity //possibly extend async instead
 {
-    public static DbxAccountManager mDbxAcctMgr;
+    private static DbxAccountManager mDbxAcctMgr;
     private static DbxFileSystem dbxFs;
     private static DbxPath mDbxPath;
     static final int REQUEST_LINK_TO_DBX = 0;
 
-    public static long startTime = 0;
+    private static long startTime = 0;
     public String name = "";
 
     @Override
@@ -39,23 +39,7 @@ public class Dropboxer extends Activity //possibly extend async instead
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_dropboxer);
 
-
-        EditText editName = (EditText) findViewById(R.id.name);
-        editName.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-            @Override
-            public boolean onEditorAction(TextView v, int actionId, KeyEvent event)
-            {
-                boolean handled = false;
-                if (actionId == EditorInfo.IME_ACTION_GO)
-                {
-                    go(null);
-                    handled = true;
-                }
-                return handled;
-            }
-        });
-
-
+        // connect to Dropbox account
         try
         {
             mDbxAcctMgr = DbxAccountManager.getInstance(getApplicationContext(), "utyphk8d2i17a6v", "011iw45c0g7r1jm");
@@ -69,13 +53,11 @@ public class Dropboxer extends Activity //possibly extend async instead
                 Toast.makeText(this, "Dropbox is connected", Toast.LENGTH_LONG).show();
             }
             dbxFs = DbxFileSystem.forAccount(mDbxAcctMgr.getLinkedAccount());
-            //mDbxPath = new DbxPath("SwerveDbx/swervedata.txt");
         }
         catch (Exception e)
         {
             // logic
         }
-        //go(null);
     }
 
     public void go(View v)
@@ -110,5 +92,10 @@ public class Dropboxer extends Activity //possibly extend async instead
     public static DbxFileSystem getDbxFs()
     {
         return dbxFs;
+    }
+
+    public static long getStartTime()
+    {
+        return startTime;
     }
 }
