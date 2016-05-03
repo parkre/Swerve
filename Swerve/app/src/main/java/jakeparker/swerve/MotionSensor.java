@@ -38,16 +38,43 @@ public class MotionSensor extends Activity implements SensorEventListener
     private TextView tv;
     private SensorManager mgr; //the management
     private Sensor accelerometer;
+    private Sensor gyroscope;
 
     private long timestamp;
     private long lastUpdate;// = 0;
     private long startTime;// = System.currentTimeMillis(); //Dropboxer.getStartTime();
     private long timeLimit = 300000L; // 5 minutes
 
-    // data structures in use
+    // accelerometer-based data structures
     private ArrayList<Float> msSway = new ArrayList();
     private ArrayList<Float> msPitch = new ArrayList();
     private ArrayList<Float> ms3d = new ArrayList();
+
+    // gyroscope-based data structures
+    private ArrayList<Float> gyroX = new ArrayList();
+    private ArrayList<Float> gyroY = new ArrayList();
+
+    // D3 features
+    float rangeAccX;
+    float rangeAccY;
+    float stdAccX;
+    float stdAccY;
+    float stdGyroX;
+    float stdGyroY;
+    float meanAccX;
+    float meanAccY;
+    float meanGyroX;
+    float meanGyroY;
+    float maxAccX;
+    float maxAccY;
+    float minAccX; // not in paper
+    float minAccY;
+    float maxGyroX;
+    float maxGyroY;
+    float minGyroX; // not in paper
+    float minGyroY; // not in paper
+    float t;
+
 
     // Dropbox data
     private ArrayList<Float> data3d = new ArrayList(1000);
@@ -110,8 +137,14 @@ public class MotionSensor extends Activity implements SensorEventListener
 
         // Get an instance of the sensor service
         mgr = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+
+        // accelerometer
         accelerometer = mgr.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
+
+        // gyroscope
+        gyroscope = mgr.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+        mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_FASTEST);
 
         if (!this.getPackageManager().hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER))
         {
@@ -249,6 +282,31 @@ public class MotionSensor extends Activity implements SensorEventListener
         }
     }
 
+    public void onGyroscopeSensorChange(SensorEvent event)
+    {
+        float[] e = new float[3];
+        e = event.values.clone();
+
+        // angular speed around x, y, z, respectively
+        float x = e[0];
+        float y = e[1];
+        float z = e[2];
+
+        // Calculate the angular speed of the sample
+        float omegaMagnitude = (float) Math.sqrt(x * x + y * y + z * z);
+
+        // Normalize the rotation vector if it's big enough to get the axis
+        if (omegaMagnitude > 1)
+        {
+            x /= omegaMagnitude;
+            y /= omegaMagnitude;
+            z /= omegaMagnitude;
+        }
+
+        gyroX.add(x);
+        gyroY.add(y);
+    }
+
     public float calcAvg(ArrayList<Float> data)
     {
         float dataSum = 0;
@@ -257,11 +315,6 @@ public class MotionSensor extends Activity implements SensorEventListener
             dataSum += d;
         }
         return dataSum / data.size();
-    }
-
-    public void onGyroscopeSensorChange(SensorEvent event)
-    {
-
     }
 
     @Override
@@ -295,14 +348,18 @@ public class MotionSensor extends Activity implements SensorEventListener
         {
             onAccelerometerSensorChange(event);
         }
+        if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE)
+        {
+            onGyroscopeSensorChange(event);
+        }
     }
 
     @Override
     protected void onResume()
     {
         super.onResume();
-        mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
-        //mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL);
+        mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
+        mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_FASTEST);
     }
 
     @Override
@@ -335,6 +392,7 @@ public class MotionSensor extends Activity implements SensorEventListener
         }
     }
 
+    // unused
     public void detectTilt()
     {
         float[] R = new float[9];
