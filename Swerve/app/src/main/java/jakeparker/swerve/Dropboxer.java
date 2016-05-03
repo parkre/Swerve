@@ -30,8 +30,10 @@ public class Dropboxer extends Activity //possibly extend async instead
     private static DbxPath mDbxPath;
     static final int REQUEST_LINK_TO_DBX = 0;
 
-    private static long startTime = 0;
-    public String name = "";
+    private String name = "";
+    // frequency write to dropbox
+    // frequency collect data
+    // ...
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -75,7 +77,6 @@ public class Dropboxer extends Activity //possibly extend async instead
             }
         }
         Intent intent = new Intent(this, MotionSensor.class);
-        startTime = System.currentTimeMillis();
         startActivity(intent);
     }
 
@@ -92,10 +93,5 @@ public class Dropboxer extends Activity //possibly extend async instead
     public static DbxFileSystem getDbxFs()
     {
         return dbxFs;
-    }
-
-    public static long getStartTime()
-    {
-        return startTime;
     }
 }

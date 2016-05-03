@@ -221,6 +221,9 @@ public class MotionSensor extends Activity implements SensorEventListener
         if (index >= 40)
         {
             index = 0;
+            ArrayList<Float> data3dClone = new ArrayList(data3d);
+            ArrayList<Float> dataXYClone = new ArrayList(dataXY);
+            ArrayList<Float> timeClone = new ArrayList(time);
             Connect dbx = new Connect()
             {
                 @Override
@@ -232,7 +235,7 @@ public class MotionSensor extends Activity implements SensorEventListener
                     }
                 }
             };
-            dbx.execute(data3d, dataXY, time);
+            dbx.execute(data3dClone, dataXYClone, timeClone);
         }
 
         // implement 5 minute time limit
