@@ -10,6 +10,7 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.SystemClock;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -38,6 +39,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     private TextView tv;
     private SensorManager mgr; //the management
     private Sensor accelerometer;
+    private Sensor magnetometer;
     private Sensor gyroscope;
 
     private long timestamp;
@@ -86,8 +88,16 @@ public class MotionSensor extends Activity implements SensorEventListener
     float[] mGravity;
     float[] mGeomagnetic;
     float orientation[] = new float[3];
+
+    // magnetic sensor
+    float[] inclination = new float[5];
+    float azimut;
     float pitch;
     float roll;
+
+    // file structure
+    String appFolderPath;
+    String systemPath;
 
     // display
     private ImageView line;
@@ -108,12 +118,20 @@ public class MotionSensor extends Activity implements SensorEventListener
 
     static
     {
-        System.loadLibrary("jnilibsvm");
+        try
+        {
+            System.loadLibrary("jnilibsvm");
+        }
+        catch (UnsatisfiedLinkError e)
+        {
+            Log.d("JNILIBSVM", "FAILED TO LOAD");
+        }
     }
 
     // connect the native functions
     private native void jniSvmTrain(String cmd);
     private native void jniSvmPredict(String cmd);
+    private native void jniHelloWorld(String jstring);
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -123,6 +141,11 @@ public class MotionSensor extends Activity implements SensorEventListener
 
         startTime = System.currentTimeMillis();
         lastUpdate = System.currentTimeMillis();
+
+        systemPath = Environment.getExternalStorageDirectory().getAbsolutePath() + "/";
+        appFolderPath = systemPath+"libsvm/";
+
+        jniHelloWorld("test");
 
         //line = (ImageView) findViewById(R.id.line);
         initializeViews();
@@ -150,6 +173,10 @@ public class MotionSensor extends Activity implements SensorEventListener
         // accelerometer
         accelerometer = mgr.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
+
+        // magnetic field sensor
+        magnetometer = mgr.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
 
         // gyroscope
         gyroscope = mgr.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
@@ -318,6 +345,51 @@ public class MotionSensor extends Activity implements SensorEventListener
         gyroY.add(y);
     }
 
+    public void extractTilt() {
+        if (mGravity != null && mGeomagnetic != null) {
+            float R[] = new float[9];
+            float I[] = new float[9];
+            //           m_Text="yes";
+            boolean success = SensorManager.getRotationMatrix(R, I, mGravity, mGeomagnetic);
+
+            if (success) {
+                float orientation[] = new float[3];
+                SensorManager.getOrientation(R, orientation);
+
+
+                azimut = orientation[0];
+                pitch = orientation[1];
+                roll = orientation[2];
+
+                inclineGravity = mGravity.clone();
+
+                double norm_Of_g = Math.sqrt(inclineGravity[0] * inclineGravity[0] + inclineGravity[1] * inclineGravity[1] + inclineGravity[2] * inclineGravity[2]);
+
+                //keep original accelration values
+
+                float x = inclineGravity[0];
+                float y = inclineGravity[1];
+                float z = inclineGravity[2];
+
+
+                // Normalize the accelerometer vector
+                inclineGravity[0] = (float) (inclineGravity[0] / norm_Of_g);
+                inclineGravity[1] = (float) (inclineGravity[1] / norm_Of_g);
+                inclineGravity[2] = (float) (inclineGravity[2] / norm_Of_g);
+                //do NOT round data
+//              inclination[0] = (float) Math.round(Math.toDegrees(Math.acos(inclineGravity[0])));
+                inclination[0] = (float) (Math.toDegrees(Math.acos(inclineGravity[0])));
+                inclination[1] = (float) (Math.toDegrees(Math.acos(inclineGravity[1])));
+                inclination[2] = (float) (Math.toDegrees(Math.acos(inclineGravity[2])));
+                inclination[3] = Math.round(Math.toDegrees(Math.atan2(x, y))); //sway
+                inclination[4] =Math.round(Math.toDegrees(Math.acos(y/norm_Of_g)));  //f3dAngle
+                // [3] and[4] to get the same as in Jake acceleration
+
+            }
+        }
+
+    }
+
     public float calcAvg(ArrayList<Float> data)
     {
         float dataSum = 0;
@@ -326,6 +398,28 @@ public class MotionSensor extends Activity implements SensorEventListener
             dataSum += d;
         }
         return dataSum / data.size();
+    }
+
+    public void helloWorld()
+    {
+        String cmd = "hello world";
+
+    }
+
+    public void doCoolShit()
+    {
+        // 2. assign model/output paths
+        String dataTrainPath = appFolderPath+"heart_scale ";
+        String dataPredictPath = appFolderPath+"heart_scale ";
+        String modelPath = appFolderPath+"model ";
+        String outputPath = appFolderPath+"predict ";
+
+        // 3. make SVM train
+        String svmTrainOptions = "-t 2 ";
+        jniSvmTrain(svmTrainOptions+dataTrainPath+modelPath);
+
+        // 4. make SVM predict
+        jniSvmPredict(dataPredictPath+modelPath+outputPath);
     }
 
     @Override

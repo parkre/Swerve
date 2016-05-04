@@ -8,8 +8,9 @@
     android:fitsSystemWindows="true"
     tools:context=".MotionSensor">
 
-    <!--<include layout="@layout/content_sensor" />-->
+    <include layout="@layout/content_sensor" />
 
+    <!--
     <TextView
         android:id="@+id/time"
         android:layout_width="wrap_content"
@@ -36,5 +37,5 @@
             android:layout_gravity="center"/>
 
     </RelativeLayout>
-
+    -->
 </android.support.design.widget.CoordinatorLayout>

@@ -12,11 +12,12 @@
 #include "./libsvm/svm-train.h"
 #include "./libsvm/svm-predict.h"
 #include "common.h"
-
+#include <android/log.h>
 
 
 // helper function to be called in Java for making svm-train
-extern "C" void Java_jakeparker_swerve_MotionSensor_jniSvmTrain(JNIEnv *env, jobject obj, jstring cmdIn){
+extern "C" void Java_jakeparker_swerve_MotionSensor_jniSvmTrain(JNIEnv *env, jobject obj, jstring cmdIn)
+{
 	const char *cmd = env->GetStringUTFChars(cmdIn, 0);
 	debug("jniSvmTrain cmd = %s", cmd);
 
@@ -41,7 +42,8 @@ extern "C" void Java_jakeparker_swerve_MotionSensor_jniSvmTrain(JNIEnv *env, job
 }
 
 // helper function to be called in Java for making svm-predict
-extern "C" void Java_jakeparker_swerve_MotionSensor_jniSvmPredict(JNIEnv *env, jobject obj, jstring cmdIn){
+extern "C" void Java_jakeparker_swerve_MotionSensor_jniSvmPredict(JNIEnv *env, jobject obj, jstring cmdIn)
+{
 	const char *cmd = env->GetStringUTFChars(cmdIn, 0);
 	debug("jniSvmPredict cmd = %s", cmd);
 
@@ -65,7 +67,12 @@ extern "C" void Java_jakeparker_swerve_MotionSensor_jniSvmPredict(JNIEnv *env, j
 	env->ReleaseStringUTFChars(cmdIn, cmd);
 }
 
-
+extern "C" void Java_jakeparker_swerve_MotionSensor_jniHelloWorld(JNIEnv *env, jobject obj, jstring jstr)
+{
+    const char *cmd = env->GetStringUTFChars(jstr, 0); // arg[1]=JNI_FALSE
+    __android_log_print(ANDROID_LOG_DEBUG, "JNI_TEST", "HELLO WORLD");
+    env->ReleaseStringUTFChars(jstr, cmd); // arg[0]=jstring, arg[1]=cpp var pointing at jstr
+}
 
 /*
 *  just some test functions -> can be removed
@@ -79,4 +86,4 @@ extern "C" void Java_jakeparker_swerve_MotionSensor_testLog(JNIEnv *env, jobject
 	debug("%s",szLogThis);
 
 	env->ReleaseStringUTFChars(logThis, szLogThis);
-} 
+}
