@@ -106,6 +106,15 @@ public class MotionSensor extends Activity implements SensorEventListener
     private DbxFileSystem dbxFs;
     private DbxPath mDbxPath;
 
+    static
+    {
+        System.loadLibrary("jnilibsvm");
+    }
+
+    // connect the native functions
+    private native void jniSvmTrain(String cmd);
+    private native void jniSvmPredict(String cmd);
+
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
@@ -115,7 +124,7 @@ public class MotionSensor extends Activity implements SensorEventListener
         startTime = System.currentTimeMillis();
         lastUpdate = System.currentTimeMillis();
 
-        line = (ImageView) findViewById(R.id.line);
+        //line = (ImageView) findViewById(R.id.line);
         initializeViews();
 
         mDbxAcctMgr = Dropboxer.getDbxAccountManager();
@@ -132,8 +141,8 @@ public class MotionSensor extends Activity implements SensorEventListener
         }
 
         // initialize display
-        bmp = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888);
-        canvas = new Canvas(bmp);
+        //bmp = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888);
+        //canvas = new Canvas(bmp);
 
         // Get an instance of the sensor service
         mgr = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -148,10 +157,11 @@ public class MotionSensor extends Activity implements SensorEventListener
 
         if (!this.getPackageManager().hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER))
         {
-            Toast.makeText(getApplicationContext(),"Accelerometer sensor is not present", Toast.LENGTH_LONG).show();
+            Toast.makeText(getApplicationContext(), "Accelerometer sensor is not present", Toast.LENGTH_LONG).show();
         }
     }
 
+    /*
     public void drawLine(int angle, int pitch)
     {
         Paint paint = new Paint();
@@ -165,6 +175,7 @@ public class MotionSensor extends Activity implements SensorEventListener
         //lineX.setText(Double.toString(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle))));
         //lineY.setText(Double.toString(lineLength * (float) Math.cos(Math.toRadians(angle))));
     }
+    */
 
     public void onAccelerometerSensorChange(SensorEvent event)
     {
@@ -223,7 +234,7 @@ public class MotionSensor extends Activity implements SensorEventListener
         // display motion
         currentAngle.setText("3D Angle: " + Integer.toString(i3dAngle) + " degrees");
         currentTime.setText("Time: " + Float.toString(timestamp) + " ms");
-        drawLine(iSway, iPitch);
+        //drawLine(iSway, iPitch);
 
         // if 100 ms or more has elapsed, average all the data collected
         // over the last appx 100 ms time interval
@@ -250,8 +261,8 @@ public class MotionSensor extends Activity implements SensorEventListener
             msPitch.clear();
         }
 
-        // write to Dropbox every 4 seconds (100ms * 40 = 4000 ms = 4 seconds)
-        if (index >= 40)
+        // write to Dropbox every 60 seconds (100ms * 600 = 60000 ms = 60 seconds)
+        if (index >= 600)
         {
             index = 0;
             ArrayList<Float> data3dClone = new ArrayList(data3d);
@@ -389,45 +400,6 @@ public class MotionSensor extends Activity implements SensorEventListener
         for (int i = 0; i < currentRotation.length; i++)
         {
             currentRotation[i] = 0;
-        }
-    }
-
-    // unused
-    public void detectTilt()
-    {
-        float[] R = new float[9];
-        float[] I = new float[9];
-
-        boolean success = SensorManager.getRotationMatrix(R, I, mGravity, mGeomagnetic);
-
-        if (success)
-        {
-            float[] orientation = new float[3];
-            SensorManager.getOrientation(R, orientation);
-
-            pitch = orientation[1];
-            roll = orientation[2];
-
-            inclineGravity = mGravity.clone();
-
-            double norm_Of_g = Math.sqrt(inclineGravity[0] * inclineGravity[0] + inclineGravity[1] * inclineGravity[1] + inclineGravity[2] * inclineGravity[2]);
-
-            // Normalize the accelerometer vector
-            inclineGravity[0] = (float) (inclineGravity[0] / norm_Of_g);
-            inclineGravity[1] = (float) (inclineGravity[1] / norm_Of_g);
-            inclineGravity[2] = (float) (inclineGravity[2] / norm_Of_g);
-
-            //Checks if device is flat on ground or not
-            int inclination = (int) Math.round(Math.toDegrees(Math.acos(inclineGravity[2])));
-
-            Float objPitch = new Float(pitch);
-            Float objZero = new Float(0.0);
-            Float objZeroPointTwo = new Float(0.2);
-            Float objZeroPointTwoNegative = new Float(-0.2);
-
-            int objPitchZeroResult = objPitch.compareTo(objZero);
-            int objPitchZeroPointTwoResult = objZeroPointTwo.compareTo(objPitch);
-            int objPitchZeroPointTwoNegativeResult = objPitch.compareTo(objZeroPointTwoNegative);
         }
     }
 }
