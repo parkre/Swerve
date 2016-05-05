@@ -10,32 +10,4 @@
 
     <include layout="@layout/content_sensor" />
 
-    <!--
-    <TextView
-        android:id="@+id/time"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:text="0 ms"
-        android:textSize="15sp"/>
-
-    <RelativeLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:layout_marginTop="100dp" >
-
-        <Button
-            android:layout_width="120dp"
-            android:layout_height="wrap_content"
-            android:text="START"
-            android:onClick="getNews"
-            android:id="@+id/get_news_button"
-            android:textColor="@color/light_blue"
-            android:background="#ff371eff"
-            android:layout_alignParentTop="true"
-            android:layout_gravity="center"/>
-
-    </RelativeLayout>
-    -->
 </android.support.design.widget.CoordinatorLayout>

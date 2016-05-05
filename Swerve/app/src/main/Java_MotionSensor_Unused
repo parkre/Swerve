@@ -1,0 +1,49 @@
+// gyroscope
+gyroscope = mgr.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_FASTEST);
+
+public void onGyroscopeSensorChange(SensorEvent event)      
+{
+    float[] e = new float[3];
+    e = event.values.clone();
+
+    // angular speed around x, y, z, respectively
+    float x = e[0];
+    float y = e[1];
+    float z = e[2];
+
+    // Calculate the angular speed of the sample
+    float omegaMagnitude = (float) Math.sqrt(x * x + y * y + z * z);
+
+    // Normalize the rotation vector if it's big enough to get the axis
+    if (omegaMagnitude > 1)
+    {
+        x /= omegaMagnitude;
+        y /= omegaMagnitude;
+        z /= omegaMagnitude;
+    }
+
+    gyroX.add(x);
+    gyroY.add(y);
+}
+
+/* begin dumb code in getEventFeatures under call to simulateForcePad() */
+                double gNormal = Math.sqrt(mGravityClone[0] * mGravityClone[0] + mGravityClone[1] * mGravityClone[1] + mGravityClone[2] * mGravityClone[2]);
+
+                float x = mGravityClone[0];
+                float y = mGravityClone[1];
+                float z = mGravityClone[2];
+
+                // normalize the accelerometer vector
+                mGravityClone[0] = (float) (mGravityClone[0] / gNormal);
+                mGravityClone[1] = (float) (mGravityClone[1] / gNormal);
+                mGravityClone[2] = (float) (mGravityClone[2] / gNormal);
+
+                //do NOT round data
+                inclination[0] = (float) (Math.toDegrees(Math.acos(mGravityClone[0])));
+                inclination[1] = (float) (Math.toDegrees(Math.acos(mGravityClone[1])));
+                inclination[2] = (float) (Math.toDegrees(Math.acos(mGravityClone[2])));
+
+                inclination[3] = Math.round(Math.toDegrees(Math.atan2(x, y))); // sway
+                inclination[4] = Math.round(Math.toDegrees(Math.atan2(z, y))); // pitch
+                /* end dumb code */

@@ -8,7 +8,14 @@
               android:gravity="center"
               android:orientation="vertical"
               android:paddingTop="20dp"
-              tools:showIn="@layout/activity_main">
+              tools:showIn="@layout/activity_motionsensor">
+
+    <!--
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:id="@+id/name"/>
+    -->
 
     <ImageView
         android:id="@+id/line"
@@ -97,6 +104,40 @@
         android:text="0 ms"
         android:textSize="15sp" />
 
+    <RelativeLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="100dp" >
+
+        <Button
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
+            android:text="START"
+            android:onClick="startSwerve"
+            android:id="@+id/start_swerve"
+            android:textColor="@color/light_blue"
+            android:background="#ff371eff"
+            android:layout_alignParentTop="true"
+            android:layout_marginRight="10dp"
+            android:layout_gravity="center"/>
+
+        <Button
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
+            android:text="STOP"
+            android:onClick="stopSwerve"
+            android:id="@+id/stop_swerve"
+            android:textColor="@color/light_blue"
+            android:background="#ff371eff"
+            android:layout_alignParentTop="true"
+            android:layout_toRightOf="@+id/start_swerve"
+            android:layout_marginLeft="10dp"
+            android:layout_gravity="center"/>
+
+    </RelativeLayout>
+
+    <!--
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -113,7 +154,8 @@
             android:text="Acceleration:"
             android:textSize="20sp" />
     </LinearLayout>
-
+`-->
+    <!--
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="167dp"
@@ -172,7 +214,8 @@
                 android:text="0.0"
                 android:textSize="15sp" />
         </LinearLayout>
-
+-->
+    <!--
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
@@ -226,5 +269,6 @@
         </LinearLayout>
 
     </LinearLayout>
+-->
 
 </LinearLayout>

@@ -75,7 +75,7 @@ public class Connect extends AsyncTask<ArrayList<?>, Void, Boolean>
             else
             {
                 mDbxFile = dbxFs.create(mDbxPath);
-                mDbxFile.appendString("time(milliseconds): 3d, XY\n\n");
+                mDbxFile.appendString("time(milliseconds): Azimuth, Pitch\n\n");
             }
             for (int i = 0; i < data3d.size(); i++)
             {

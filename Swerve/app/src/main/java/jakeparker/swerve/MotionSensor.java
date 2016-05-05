@@ -3,6 +3,7 @@ package jakeparker.swerve;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.hardware.Sensor;
@@ -14,6 +15,7 @@ import android.os.Environment;
 import android.os.SystemClock;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -29,13 +31,21 @@ import com.dropbox.sync.android.DbxPath;
 
 import org.w3c.dom.Text;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 
 /*
  * Created by jacobparker on 3/29/16.
  */
 public class MotionSensor extends Activity implements SensorEventListener
 {
+    public static final String TAG = "MOTIONSENSOR";
+
     private TextView tv;
     private SensorManager mgr; //the management
     private Sensor accelerometer;
@@ -52,39 +62,35 @@ public class MotionSensor extends Activity implements SensorEventListener
     private ArrayList<Float> msPitch = new ArrayList();
     private ArrayList<Float> ms3d = new ArrayList();
 
-    // gyroscope-based data structures
-    private ArrayList<Float> gyroX = new ArrayList();
-    private ArrayList<Float> gyroY = new ArrayList();
-
     // D3 features
-    float rangeAccX;
-    float rangeAccY;
-    float stdAccX;
-    float stdAccY;
-    float stdGyroX;
-    float stdGyroY;
-    float meanAccX;
-    float meanAccY;
-    float meanGyroX;
-    float meanGyroY;
-    float maxAccX;
-    float maxAccY;
-    float minAccX; // not in paper
-    float minAccY;
-    float maxGyroX;
-    float maxGyroY;
-    float minGyroX; // not in paper
-    float minGyroY; // not in paper
-    float t;
+    float rangeAccX, rangeAccZ;
+    float meanAccX, meanAccZ, stdAccX, stdAccZ, maxAccX, maxAccZ, minAccX, minAccZ;
+    float meanOriX, meanOriZ, stdOriX, stdOriZ, maxOriX, maxOriZ, minOriX, minOriZ;
+    float meanGyroX, meanGyroZ, stdGyroX, stdGyroZ, maxGyroX, maxGyroZ, minGyroX, minGyroZ;
+    float t, tStart, tEnd;
 
+    // D3 data structures
+    ArrayList<Float> accX = new ArrayList();
+    ArrayList<Float> accZ = new ArrayList();
+    ArrayList<Float> oriX = new ArrayList();
+    ArrayList<Float> oriZ = new ArrayList();
+    ArrayList<Float> gyroX = new ArrayList();
+    ArrayList<Float> gyroZ = new ArrayList();
 
-    // Dropbox data
-    private ArrayList<Float> data3d = new ArrayList(1000);
-    private ArrayList<Float> dataXY = new ArrayList(1000);
-    private ArrayList<Long> time = new ArrayList(1000);
-    private int index = 0;
+    /* ark variables */
+    private float lastX, lastY, lastZ;
+    private float deltaXMax = 0;
+    private float deltaYMax = 0;
+    private float deltaZMax = 0;
+    private double tetaDegrees = 0;
+    private float deltaX = 0;
+    private float deltaY = 0;
+    private float deltaZ = 0;
+    private float tetaDeg = 0;
+    private float timeFl = 0;
+    private float timeSkip = 0;
 
-    float[] inclineGravity = new float[3];
+    float[] mGravityClone = new float[3];
     float[] mGravity;
     float[] mGeomagnetic;
     float orientation[] = new float[3];
@@ -94,6 +100,14 @@ public class MotionSensor extends Activity implements SensorEventListener
     float azimut;
     float pitch;
     float roll;
+    /* end ark */
+
+    // Dropbox data
+    private ArrayList<Float> data3d = new ArrayList(1000);
+    private ArrayList<Float> dataAzim = new ArrayList(1000);
+    private ArrayList<Float> dataPitch = new ArrayList(1000);
+    private ArrayList<Long> time = new ArrayList(1000);
+    private int index = 0;
 
     // file structure
     String appFolderPath;
@@ -107,14 +121,13 @@ public class MotionSensor extends Activity implements SensorEventListener
     private TextView currentX, currentY, currentZ, currentMagnitude, currentAngle, currentTime;
     private TextView lineX, lineY;
 
-    // extra
-    private float[] currentRotation = new float[9];
-
     /* dropbox */
 
     private static DbxAccountManager mDbxAcctMgr;
     private DbxFileSystem dbxFs;
     private DbxPath mDbxPath;
+
+    boolean started = false;
 
     static
     {
@@ -143,11 +156,11 @@ public class MotionSensor extends Activity implements SensorEventListener
         lastUpdate = System.currentTimeMillis();
 
         systemPath = Environment.getExternalStorageDirectory().getAbsolutePath() + "/";
-        appFolderPath = systemPath+"libsvm/";
+        appFolderPath = systemPath + "libsvm/";
 
         jniHelloWorld("test");
 
-        //line = (ImageView) findViewById(R.id.line);
+        line = (ImageView) findViewById(R.id.line);
         initializeViews();
 
         mDbxAcctMgr = Dropboxer.getDbxAccountManager();
@@ -164,8 +177,8 @@ public class MotionSensor extends Activity implements SensorEventListener
         }
 
         // initialize display
-        //bmp = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888);
-        //canvas = new Canvas(bmp);
+        bmp = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888);
+        canvas = new Canvas(bmp);
 
         // Get an instance of the sensor service
         mgr = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -178,31 +191,53 @@ public class MotionSensor extends Activity implements SensorEventListener
         magnetometer = mgr.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
         mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
 
-        // gyroscope
-        gyroscope = mgr.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
-        mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_FASTEST);
-
         if (!this.getPackageManager().hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER))
         {
             Toast.makeText(getApplicationContext(), "Accelerometer sensor is not present", Toast.LENGTH_LONG).show();
         }
     }
 
-    /*
     public void drawLine(int angle, int pitch)
     {
         Paint paint = new Paint();
         paint.setColor(Color.BLACK);
         canvas.drawLine(0, 200, 400, 200, paint);
         canvas.drawLine(200, 0, 200, 400, paint);
-        paint.setStrokeWidth(6);
+        paint.setStrokeWidth(4);
         paint.setColor(Color.DKGRAY);
         canvas.drawPoint(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength - lineLength * (float) Math.sin(Math.toRadians(pitch)), paint);
         line.setImageBitmap(bmp);
         //lineX.setText(Double.toString(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle))));
         //lineY.setText(Double.toString(lineLength * (float) Math.cos(Math.toRadians(angle))));
     }
-    */
+
+    public void getEventFeatures()
+    {
+        if (mGravity != null && mGeomagnetic != null)
+        {
+            float R[] = new float[9];
+            float I[] = new float[9];
+            boolean itWorks = SensorManager.getRotationMatrix(R, I, mGravity, mGeomagnetic);
+
+            if (itWorks)
+            {
+                float orientation[] = new float[3];
+                SensorManager.getOrientation(R, orientation);
+
+                // D3 orientation features
+                oriZ.add(orientation[0]); // rotation around z axis --> azimut
+                oriX.add(orientation[1]); // rotation around x axis --> pitch
+                //orientation[2]; // rotation around y axis --> roll
+
+                mGravityClone = mGravity.clone();
+                accX.add(mGravityClone[0]);
+                accZ.add(mGravityClone[2]);
+
+                // display
+                manageRawData(mGravityClone);
+            }
+        }
+    }
 
     public void onAccelerometerSensorChange(SensorEvent event)
     {
@@ -261,7 +296,7 @@ public class MotionSensor extends Activity implements SensorEventListener
         // display motion
         currentAngle.setText("3D Angle: " + Integer.toString(i3dAngle) + " degrees");
         currentTime.setText("Time: " + Float.toString(timestamp) + " ms");
-        //drawLine(iSway, iPitch);
+        drawLine(iSway, iPitch);
 
         // if 100 ms or more has elapsed, average all the data collected
         // over the last appx 100 ms time interval
@@ -273,13 +308,13 @@ public class MotionSensor extends Activity implements SensorEventListener
             try
             {
                 data3d.set(index, avg3d);
-                dataXY.set(index, avgSway);
+                dataAzim.set(index, avgSway);
                 time.set(index, timestamp);
             }
             catch (IndexOutOfBoundsException e)
             {
                 data3d.add(index, avg3d);
-                dataXY.add(index, avgSway);
+                dataAzim.add(index, avgSway);
                 time.add(index, timestamp);
             }
             index++;
@@ -293,7 +328,7 @@ public class MotionSensor extends Activity implements SensorEventListener
         {
             index = 0;
             ArrayList<Float> data3dClone = new ArrayList(data3d);
-            ArrayList<Float> dataXYClone = new ArrayList(dataXY);
+            ArrayList<Float> dataAzimClone = new ArrayList(dataAzim);
             ArrayList<Float> timeClone = new ArrayList(time);
             Connect dbx = new Connect()
             {
@@ -306,7 +341,7 @@ public class MotionSensor extends Activity implements SensorEventListener
                     }
                 }
             };
-            dbx.execute(data3dClone, dataXYClone, timeClone);
+            dbx.execute(data3dClone, dataAzimClone, timeClone);
         }
 
         // implement 5 minute time limit
@@ -322,72 +357,12 @@ public class MotionSensor extends Activity implements SensorEventListener
 
     public void onGyroscopeSensorChange(SensorEvent event)
     {
-        float[] e = new float[3];
-        e = event.values.clone();
-
-        // angular speed around x, y, z, respectively
-        float x = e[0];
-        float y = e[1];
-        float z = e[2];
-
-        // Calculate the angular speed of the sample
-        float omegaMagnitude = (float) Math.sqrt(x * x + y * y + z * z);
-
-        // Normalize the rotation vector if it's big enough to get the axis
-        if (omegaMagnitude > 1)
-        {
-            x /= omegaMagnitude;
-            y /= omegaMagnitude;
-            z /= omegaMagnitude;
-        }
-
-        gyroX.add(x);
-        gyroY.add(y);
+        // Java_MotionSensor_Unused
     }
 
-    public void extractTilt() {
-        if (mGravity != null && mGeomagnetic != null) {
-            float R[] = new float[9];
-            float I[] = new float[9];
-            //           m_Text="yes";
-            boolean success = SensorManager.getRotationMatrix(R, I, mGravity, mGeomagnetic);
-
-            if (success) {
-                float orientation[] = new float[3];
-                SensorManager.getOrientation(R, orientation);
-
-
-                azimut = orientation[0];
-                pitch = orientation[1];
-                roll = orientation[2];
-
-                inclineGravity = mGravity.clone();
-
-                double norm_Of_g = Math.sqrt(inclineGravity[0] * inclineGravity[0] + inclineGravity[1] * inclineGravity[1] + inclineGravity[2] * inclineGravity[2]);
-
-                //keep original accelration values
-
-                float x = inclineGravity[0];
-                float y = inclineGravity[1];
-                float z = inclineGravity[2];
-
-
-                // Normalize the accelerometer vector
-                inclineGravity[0] = (float) (inclineGravity[0] / norm_Of_g);
-                inclineGravity[1] = (float) (inclineGravity[1] / norm_Of_g);
-                inclineGravity[2] = (float) (inclineGravity[2] / norm_Of_g);
-                //do NOT round data
-//              inclination[0] = (float) Math.round(Math.toDegrees(Math.acos(inclineGravity[0])));
-                inclination[0] = (float) (Math.toDegrees(Math.acos(inclineGravity[0])));
-                inclination[1] = (float) (Math.toDegrees(Math.acos(inclineGravity[1])));
-                inclination[2] = (float) (Math.toDegrees(Math.acos(inclineGravity[2])));
-                inclination[3] = Math.round(Math.toDegrees(Math.atan2(x, y))); //sway
-                inclination[4] =Math.round(Math.toDegrees(Math.acos(y/norm_Of_g)));  //f3dAngle
-                // [3] and[4] to get the same as in Jake acceleration
-
-            }
-        }
-
+    public void onMagneticFieldSensorChange(SensorEvent event)
+    {
+        // nothing
     }
 
     public float calcAvg(ArrayList<Float> data)
@@ -400,50 +375,162 @@ public class MotionSensor extends Activity implements SensorEventListener
         return dataSum / data.size();
     }
 
-    public void helloWorld()
+    public float calcStd(ArrayList<Float> data, float dataAvg)
     {
-        String cmd = "hello world";
-
+        float std = 0;
+        for (float d : data)
+        {
+            std += Math.pow(d - dataAvg, 2.0D);
+        }
+        return (float) Math.sqrt(std);
     }
 
-    public void doCoolShit()
+    public void calcSvmFeatures()
     {
-        // 2. assign model/output paths
+        meanAccX = calcAvg(accX);
+        meanAccZ = calcAvg(accZ);
+        meanOriX = calcAvg(oriX);
+        meanOriZ = calcAvg(oriZ);
+
+        maxAccX = Collections.max(accX);
+        minAccX = Collections.min(accX);
+        maxAccZ = Collections.max(accZ);
+        minAccZ = Collections.min(accZ);
+
+        maxOriX = Collections.max(oriX);
+        minOriX = Collections.min(oriX);
+        maxOriZ = Collections.max(oriZ);
+        minOriZ = Collections.min(oriZ);
+
+        rangeAccX = maxAccX - minAccX;
+        rangeAccZ = maxAccZ - minAccZ;
+
+        stdAccX = calcStd(accX, meanAccX);
+        stdAccZ = calcStd(accZ, meanAccZ);
+        stdOriX = calcStd(oriX, meanOriX);
+        stdOriZ = calcStd(oriZ, meanOriZ);
+    }
+
+    public void svmTrain()
+    {
+        // assign model/output paths
         String dataTrainPath = appFolderPath+"heart_scale ";
         String dataPredictPath = appFolderPath+"heart_scale ";
         String modelPath = appFolderPath+"model ";
         String outputPath = appFolderPath+"predict ";
 
-        // 3. make SVM train
+        // make SVM train
         String svmTrainOptions = "-t 2 ";
         jniSvmTrain(svmTrainOptions+dataTrainPath+modelPath);
+    }
 
-        // 4. make SVM predict
+    public void svmPredict()
+    {
+        // assign model/output paths
+        String dataTrainPath = appFolderPath+"heart_scale ";
+        String dataPredictPath = appFolderPath+"heart_scale ";
+        String modelPath = appFolderPath+"model ";
+        String outputPath = appFolderPath+"predict ";
+
+        // make SVM predict
         jniSvmPredict(dataPredictPath+modelPath+outputPath);
     }
 
-    @Override
-    public final void onAccuracyChanged(Sensor sensor, int accuracy) {
-        // Do something if sensor accuracy changes.
-    }
-
-    private float[] calculateNewRotationMatrix(float[] a, float[] b)
+    public void manageRawData(float[] g)
     {
-        float[] result = new float[9];
+        float x = g[0];
+        float y = g[1];
+        float z = g[2];
 
-        result[0] = a[0] * b[0] + a[1] * b[3] + a[2] * b[6];
-        result[1] = a[0] * b[1] + a[1] * b[4] + a[2] * b[7];
-        result[2] = a[0] * b[2] + a[1] * b[5] + a[2] * b[8];
+        long curTime = System.currentTimeMillis();
+        float diffTime = curTime - lastUpdate;
+        timestamp = curTime - startTime;
 
-        result[3] = a[3] * b[0] + a[4] * b[3] + a[5] * b[6];
-        result[4] = a[3] * b[1] + a[4] * b[4] + a[5] * b[7];
-        result[5] = a[3] * b[2] + a[4] * b[5] + a[5] * b[8];
+        float accMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
+        float xyMagnitude = (float) Math.sqrt(x*x + y*y);
 
-        result[6] = a[6] * b[0] + a[7] * b[3] + a[8] * b[6];
-        result[7] = a[6] * b[1] + a[7] * b[4] + a[8] * b[7];
-        result[8] = a[6] * b[2] + a[7] * b[5] + a[8] * b[8];
+        // normalize
+        if (xyMagnitude < 8)
+        {
+            x /= accMagnitude;
+            y /= accMagnitude;
+            z /= accMagnitude;
+        }
+        else
+        {
+            x *= 100;
+            y *= 100;
+            z *= 100;
+        }
+        float normMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
 
-        return result;
+        // sway
+        int iSway = (int) Math.round(Math.toDegrees(Math.atan2(x, y)));
+        float fSway = Math.round(Math.toDegrees(Math.atan2(x, y)));
+
+        // pitch
+        int iPitch = (int) Math.round(Math.toDegrees(Math.atan2(z, y)));
+        float fPitch = Math.round(Math.toDegrees(Math.atan2(z, y)));
+
+        // 3d orientation
+        int i3dAngle = (int) Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
+        float f3dAngle = Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
+
+        // 100 ms avg
+        ms3d.add(f3dAngle);
+        msSway.add(fSway);
+        msPitch.add(fPitch);
+
+        // display motion
+        currentAngle.setText("3D Angle: " + Integer.toString(i3dAngle) + " degrees");
+        currentTime.setText("Time: " + Float.toString(timestamp) + " ms");
+        drawLine(iSway, iPitch);
+
+        // if 100 ms or more has elapsed, average all the data collected
+        // over the last appx 100 ms time interval
+        if (diffTime >= 100)
+        {
+            lastUpdate = curTime;
+            float avgSway = calcAvg(msSway);
+            float avgPitch = calcAvg(msPitch);
+            try
+            {
+                dataAzim.set(index, avgSway);
+                dataPitch.set(index, avgPitch);
+                time.set(index, timestamp);
+            }
+            catch (IndexOutOfBoundsException e)
+            {
+                dataAzim.add(index, avgSway);
+                dataPitch.add(index, avgSway);
+                time.add(index, timestamp);
+            }
+            index++;
+            ms3d.clear();
+            msSway.clear();
+            msPitch.clear();
+        }
+
+        // write to Dropbox every 60 seconds (100ms * 600 = 60000 ms = 60 seconds)
+        if (index >= 600)
+        {
+            index = 0;
+            ArrayList<Float> dataAzimClone = new ArrayList(dataAzim);
+            ArrayList<Float> dataPitchClone = new ArrayList(dataPitch);
+            ArrayList<Float> timeClone = new ArrayList(time);
+            Connect dbx = new Connect()
+            {
+                @Override
+                public void onPostExecute(Boolean result)
+                {
+                    if (result == true)
+                    {
+                        System.out.println("Data sent to Dropbox");
+                    }
+                }
+            };
+            dbx.execute(dataAzimClone, dataPitchClone, timeClone);
+        }
     }
 
     @Override
@@ -451,12 +538,26 @@ public class MotionSensor extends Activity implements SensorEventListener
     {
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER)
         {
-            onAccelerometerSensorChange(event);
+            mGravity = event.values.clone();
+            //onAccelerometerSensorChange(event);
         }
         if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE)
         {
-            onGyroscopeSensorChange(event);
+            //onGyroscopeSensorChange(event);
         }
+        if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD)
+        {
+            mGeomagnetic = event.values.clone();
+            //onMagneticFieldSensorChange(event);
+        }
+
+        getEventFeatures();
+    }
+
+    @Override
+    public final void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // suh dude
     }
 
     @Override
@@ -464,36 +565,137 @@ public class MotionSensor extends Activity implements SensorEventListener
     {
         super.onResume();
         mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
-        mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_FASTEST);
+        mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
+        //mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_FASTEST);
     }
 
     @Override
     protected void onPause()
     {
-        // important to unregister the sensor when the activity pauses.
         super.onPause();
         mgr.unregisterListener(this);
     }
 
     public void displayCleanValues()
     {
-        currentX.setText("–");
-        currentY.setText("–");
-        currentZ.setText("–");
+        //currentX.setText("–");
+        //currentY.setText("–");
+        //currentZ.setText("–");
     }
 
     public void initializeViews()
     {
-        currentX = (TextView) findViewById(R.id.currentX);
-        currentY = (TextView) findViewById(R.id.currentY);
-        currentZ = (TextView) findViewById(R.id.currentZ);
-        currentMagnitude = (TextView) findViewById(R.id.currentOmega);
+        //currentX = (TextView) findViewById(R.id.currentX);
+        //currentY = (TextView) findViewById(R.id.currentY);
+        //currentZ = (TextView) findViewById(R.id.currentZ);
+        //currentMagnitude = (TextView) findViewById(R.id.currentOmega);
         currentAngle = (TextView) findViewById(R.id.angle);
         currentTime = (TextView) findViewById(R.id.time);
+    }
 
-        for (int i = 0; i < currentRotation.length; i++)
+    public void startSwerve(View v)
+    {
+        if (started == false)
         {
-            currentRotation[i] = 0;
+            tStart = System.currentTimeMillis();
+
+            // start sensors
+            mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
+            mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
+
+            started = true;
+        }
+    }
+
+    public void stopSwerve(View v)
+    {
+        if (started == true)
+        {
+            super.onPause();
+            mgr.unregisterListener(this);
+            tEnd = System.currentTimeMillis();
+            t = tEnd - tStart;
+            displayCleanValues();
+            currentTime.setText(Float.toString(t));
+        }
+    }
+
+    /*
+    * Some utility functions
+    * */
+    private void CreateAppFolderIfNeed()
+    {
+        // 1. create app folder if necessary
+        File folder = new File(appFolderPath);
+
+        if (!folder.exists())
+        {
+            folder.mkdir();
+            Log.d(TAG,"Appfolder is not existed, create one");
+        }
+        else
+        {
+            Log.w(TAG,"WARN: Appfolder has not been deleted");
+        }
+    }
+
+    private void copyAssetsDataIfNeed()
+    {
+        String assetsToCopy[] = {"swerve_predict","swerve_train","swerve"};
+        //String targetPath[] = {C.systemPath+C.INPUT_FOLDER+C.INPUT_PREFIX+AudioConfigManager.inputConfigTrain+".wav", C.systemPath+C.INPUT_FOLDER+C.INPUT_PREFIX+AudioConfigManager.inputConfigPredict+".wav",C.systemPath+C.INPUT_FOLDER+"SomeoneLikeYouShort.mp3"};
+
+        for(int i=0; i < assetsToCopy.length; i++)
+        {
+            String from = assetsToCopy[i];
+            String to = appFolderPath+from;
+
+            // 1. check if file exist
+            File file = new File(to);
+            if (file.exists())
+            {
+                Log.d(TAG, "copyAssetsDataIfNeed: file exist, no need to copy:"+from);
+            }
+            else
+            {
+                // do copy
+                boolean copyResult = copyAsset(getAssets(), from, to);
+                Log.d(TAG, "copyAssetsDataIfNeed: copy result = " + copyResult + " of file = " + from);
+            }
+        }
+    }
+
+    private boolean copyAsset(AssetManager assetManager, String fromAssetPath, String toPath)
+    {
+        InputStream in = null;
+        OutputStream out = null;
+        try
+        {
+            in = assetManager.open(fromAssetPath);
+            new File(toPath).createNewFile();
+            out = new FileOutputStream(toPath);
+            copyFile(in, out);
+            in.close();
+            in = null;
+            out.flush();
+            out.close();
+            out = null;
+            return true;
+        }
+        catch(Exception e)
+        {
+            e.printStackTrace();
+            Log.e(TAG, "[ERROR]: copyAsset: unable to copy file = " + fromAssetPath);
+            return false;
+        }
+    }
+
+    private void copyFile(InputStream in, OutputStream out) throws IOException
+    {
+        byte[] buffer = new byte[1024];
+        int read;
+        while((read = in.read(buffer)) != -1)
+        {
+            out.write(buffer, 0, read);
         }
     }
 }

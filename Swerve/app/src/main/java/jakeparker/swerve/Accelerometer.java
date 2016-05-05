@@ -37,7 +37,7 @@ public class Accelerometer extends Activity implements SensorEventListener
     {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_accelerometer);
-        initializeViews();
+        //initializeViews();
 
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         if (sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) != null)
@@ -63,9 +63,9 @@ public class Accelerometer extends Activity implements SensorEventListener
 
     public void initializeViews()
     {
-        currentX = (TextView) findViewById(R.id.currentX);
-        currentY = (TextView) findViewById(R.id.currentY);
-        currentZ = (TextView) findViewById(R.id.currentZ);
+        //currentX = (TextView) findViewById(R.id.currentX);
+        //currentY = (TextView) findViewById(R.id.currentY);
+        //currentZ = (TextView) findViewById(R.id.currentZ);
         //       currentZ3 = (TextView) findViewById(R.id.currentZ3);
     }
 
