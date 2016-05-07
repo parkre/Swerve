@@ -31,6 +31,7 @@ extern "C" void Java_jakeparker_swerve_MotionSensor_jniSvmTrain(JNIEnv *env, job
 	// make svm train by libsvm
 	svmtrain::main(v.size(),&v[0]);
 
+    __android_log_print(ANDROID_LOG_DEBUG, "JNI_LIBSVM_TRAIN", "SUCCESS");
 
 	// free vector memory
 	for(int i=0;i<v.size();i++){
@@ -57,6 +58,7 @@ extern "C" void Java_jakeparker_swerve_MotionSensor_jniSvmPredict(JNIEnv *env, j
 	// make svm train by libsvm
 	svmpredict::main(v.size(),&v[0]);
 
+    __android_log_print(ANDROID_LOG_DEBUG, "JNI_LIBSVM_PREDICT", "SUCCESS");
 
 	// free vector memory
 	for(int i=0;i<v.size();i++){

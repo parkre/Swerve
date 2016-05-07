@@ -77,6 +77,7 @@ public class Dropboxer extends Activity //possibly extend async instead
             }
         }
         Intent intent = new Intent(this, MotionSensor.class);
+        intent.putExtra("name", name);
         startActivity(intent);
     }
 

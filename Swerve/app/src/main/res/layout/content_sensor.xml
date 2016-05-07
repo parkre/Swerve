@@ -113,6 +113,55 @@
         <Button
             android:layout_width="120dp"
             android:layout_height="wrap_content"
+            android:text="TRAIN +"
+            android:onClick="makeModel"
+            android:id="@+id/train_normal"
+            android:enabled="false"
+            android:textColor="@color/light_blue"
+            android:background="#ff371eff"
+            android:layout_alignParentTop="true"
+            android:layout_marginRight="10dp"
+            android:layout_gravity="center"/>
+
+        <Button
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
+            android:text="TRAIN -"
+            android:onClick="makeModel"
+            android:id="@+id/train_notnormal"
+            android:enabled="false"
+            android:textColor="@color/light_blue"
+            android:background="#ff371eff"
+            android:layout_alignParentTop="true"
+            android:layout_toRightOf="@+id/train_normal"
+            android:layout_marginRight="10dp"
+            android:layout_gravity="center"/>
+
+        <Button
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
+            android:text="PREDICT"
+            android:onClick="makePrediction"
+            android:id="@+id/predict"
+            android:enabled="false"
+            android:textColor="@color/light_blue"
+            android:background="#ff371eff"
+            android:layout_alignParentTop="true"
+            android:layout_toRightOf="@+id/train_notnormal"
+            android:layout_marginLeft="10dp"
+            android:layout_gravity="center"/>
+
+    </RelativeLayout>
+
+    <RelativeLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="100dp" >
+
+        <Button
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
             android:text="START"
             android:onClick="startSwerve"
             android:id="@+id/start_swerve"

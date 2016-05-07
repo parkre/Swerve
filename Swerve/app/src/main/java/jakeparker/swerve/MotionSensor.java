@@ -31,13 +31,19 @@ import com.dropbox.sync.android.DbxPath;
 
 import org.w3c.dom.Text;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.Buffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Scanner;
 
 /*
  * Created by jacobparker on 3/29/16.
@@ -63,11 +69,12 @@ public class MotionSensor extends Activity implements SensorEventListener
     private ArrayList<Float> ms3d = new ArrayList();
 
     // D3 features
-    float rangeAccX, rangeAccZ;
+    float rangeAccX, rangeAccZ, rangeOriX, rangeOriZ;
     float meanAccX, meanAccZ, stdAccX, stdAccZ, maxAccX, maxAccZ, minAccX, minAccZ;
     float meanOriX, meanOriZ, stdOriX, stdOriZ, maxOriX, maxOriZ, minOriX, minOriZ;
     float meanGyroX, meanGyroZ, stdGyroX, stdGyroZ, maxGyroX, maxGyroZ, minGyroX, minGyroZ;
     float t, tStart, tEnd;
+    ArrayList<Float> instance = new ArrayList();
 
     // D3 data structures
     ArrayList<Float> accX = new ArrayList();
@@ -76,6 +83,13 @@ public class MotionSensor extends Activity implements SensorEventListener
     ArrayList<Float> oriZ = new ArrayList();
     ArrayList<Float> gyroX = new ArrayList();
     ArrayList<Float> gyroZ = new ArrayList();
+
+    // svm variables
+    boolean trainMode = false;
+    boolean predictMode = false;
+
+    final String POS = "1";
+    final String NEG = "0";
 
     /* ark variables */
     private float lastX, lastY, lastZ;
@@ -120,6 +134,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     private float lineLength = 200;
     private TextView currentX, currentY, currentZ, currentMagnitude, currentAngle, currentTime;
     private TextView lineX, lineY;
+    private String name;
 
     /* dropbox */
 
@@ -158,6 +173,14 @@ public class MotionSensor extends Activity implements SensorEventListener
         systemPath = Environment.getExternalStorageDirectory().getAbsolutePath() + "/";
         appFolderPath = systemPath + "libsvm/";
 
+        // create necessary folder to save model files
+        CreateAppFolderIfNeed();
+        copyAssetsDataIfNeed();
+
+        Log.d(TAG, "APP FOLDER PATH = " + appFolderPath);
+
+        name = getIntent().getStringExtra("name");
+
         jniHelloWorld("test");
 
         line = (ImageView) findViewById(R.id.line);
@@ -180,6 +203,9 @@ public class MotionSensor extends Activity implements SensorEventListener
         bmp = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888);
         canvas = new Canvas(bmp);
 
+        tStart = System.currentTimeMillis();
+        started = true;
+
         // Get an instance of the sensor service
         mgr = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
 
@@ -190,27 +216,11 @@ public class MotionSensor extends Activity implements SensorEventListener
         // magnetic field sensor
         magnetometer = mgr.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
         mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
-
-        if (!this.getPackageManager().hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER))
-        {
-            Toast.makeText(getApplicationContext(), "Accelerometer sensor is not present", Toast.LENGTH_LONG).show();
-        }
     }
 
-    public void drawLine(int angle, int pitch)
-    {
-        Paint paint = new Paint();
-        paint.setColor(Color.BLACK);
-        canvas.drawLine(0, 200, 400, 200, paint);
-        canvas.drawLine(200, 0, 200, 400, paint);
-        paint.setStrokeWidth(4);
-        paint.setColor(Color.DKGRAY);
-        canvas.drawPoint(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength - lineLength * (float) Math.sin(Math.toRadians(pitch)), paint);
-        line.setImageBitmap(bmp);
-        //lineX.setText(Double.toString(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle))));
-        //lineY.setText(Double.toString(lineLength * (float) Math.cos(Math.toRadians(angle))));
-    }
-
+    /*
+     *
+     */
     public void getEventFeatures()
     {
         if (mGravity != null && mGeomagnetic != null)
@@ -228,7 +238,6 @@ public class MotionSensor extends Activity implements SensorEventListener
                 oriZ.add(orientation[0]); // rotation around z axis --> azimut
                 oriX.add(orientation[1]); // rotation around x axis --> pitch
                 //orientation[2]; // rotation around y axis --> roll
-
                 mGravityClone = mGravity.clone();
                 accX.add(mGravityClone[0]);
                 accZ.add(mGravityClone[2]);
@@ -238,6 +247,530 @@ public class MotionSensor extends Activity implements SensorEventListener
             }
         }
     }
+
+    /*
+     *
+     */
+    public void manageRawData(float[] g)
+    {
+        float x = g[0];
+        float y = g[1];
+        float z = g[2];
+
+        long curTime = System.currentTimeMillis();
+        float diffTime = curTime - lastUpdate;
+        timestamp = curTime - startTime;
+
+        float accMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
+        float xyMagnitude = (float) Math.sqrt(x*x + y*y);
+
+        // normalize
+        if (xyMagnitude < 8)
+        {
+            x /= accMagnitude;
+            y /= accMagnitude;
+            z /= accMagnitude;
+        }
+        else
+        {
+            x *= 100;
+            y *= 100;
+            z *= 100;
+        }
+        float normMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
+
+        // sway
+        int iSway = (int) Math.round(Math.toDegrees(Math.atan2(x, y)));
+        float fSway = Math.round(Math.toDegrees(Math.atan2(x, y)));
+
+        // pitch
+        int iPitch = (int) Math.round(Math.toDegrees(Math.atan2(z, y)));
+        float fPitch = Math.round(Math.toDegrees(Math.atan2(z, y)));
+
+        // 3d orientation
+        int i3dAngle = (int) Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
+        float f3dAngle = Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
+
+        // 100 ms avg
+        ms3d.add(f3dAngle);
+        msSway.add(fSway);
+        msPitch.add(fPitch);
+
+        // display motion
+        //currentAngle.setText("3D Angle: " + Integer.toString(i3dAngle) + " degrees");
+        currentTime.setText("Time: " + Float.toString(timestamp) + " ms");
+        //draw(iSway, iPitch);
+
+        // if 100 ms or more has elapsed, average all the data collected
+        // over the last appx 100 ms time interval
+        if (diffTime >= 100)
+        {
+            lastUpdate = curTime;
+            float avgSway = calcAvg(msSway);
+            float avgPitch = calcAvg(msPitch);
+            try
+            {
+                dataAzim.set(index, avgSway);
+                dataPitch.set(index, avgPitch);
+                time.set(index, timestamp);
+            }
+            catch (IndexOutOfBoundsException e)
+            {
+                dataAzim.add(index, avgSway);
+                dataPitch.add(index, avgSway);
+                time.add(index, timestamp);
+            }
+            index++;
+            ms3d.clear();
+            msSway.clear();
+            msPitch.clear();
+        }
+
+        // write to Dropbox every 60 seconds (100ms * 600 = 60000 ms = 60 seconds)
+        if (index >= 600)
+        {
+            sendToDropbox();
+        }
+
+        // implement 5 minute time limit
+        // timeLimit = 300000 ms
+        if (curTime - tStart > timeLimit)
+        {
+            stopSwerve(null);
+        }
+    }
+
+    public void calcSvmFeatures()
+    {
+        meanAccX = calcAvg(accX);
+        meanAccZ = calcAvg(accZ);
+        meanOriX = calcAvg(oriX);
+        meanOriZ = calcAvg(oriZ);
+
+        maxAccX = Collections.max(accX);
+        minAccX = Collections.min(accX);
+        maxAccZ = Collections.max(accZ);
+        minAccZ = Collections.min(accZ);
+
+        maxOriX = Collections.max(oriX);
+        minOriX = Collections.min(oriX);
+        maxOriZ = Collections.max(oriZ);
+        minOriZ = Collections.min(oriZ);
+
+        rangeAccX = maxAccX - minAccX;
+        rangeAccZ = maxAccZ - minAccZ;
+        rangeOriX = maxOriX - minOriX;
+        rangeOriZ = maxOriZ - minOriZ;
+
+        stdAccX = calcStd(accX, meanAccX);
+        stdAccZ = calcStd(accZ, meanAccZ);
+        stdOriX = calcStd(oriX, meanOriX);
+        stdOriZ = calcStd(oriZ, meanOriZ);
+
+        /* store in arraylist */
+        instance.add(rangeAccX);
+        instance.add(rangeAccZ);
+        //instance.add(rangeOriX);
+        //instance.add(rangeOriZ);
+        instance.add(stdAccX);
+        instance.add(stdAccZ);
+        instance.add(stdOriX);
+        instance.add(stdOriZ);
+        instance.add(meanAccX);
+        instance.add(meanAccZ);
+        instance.add(meanOriX);
+        instance.add(meanOriZ);
+        //instance.add(maxAccX);
+        //instance.add(minAccX);
+        //instance.add(maxAccZ);
+        instance.add(minAccZ);
+        instance.add(maxOriX);
+        //instance.add(minOriX);
+        instance.add(maxOriZ);
+        //instance.add(minOriZ);
+        instance.add(t);
+    }
+
+    /*
+     * take motion plus given class and append it to set
+     */
+    public void svmEvaluate()
+    {
+        // assign model/output paths
+        String dataTrainPath = appFolderPath+"heart_scale ";
+        String dataPredictPath = appFolderPath+"heart_scale ";
+        String modelPath = appFolderPath+"model ";
+        String outputPath = appFolderPath+"predict ";
+
+        // make SVM train
+        String svmTrainOptions = "-t 2 ";
+        jniSvmTrain(svmTrainOptions + dataTrainPath + modelPath);
+
+        // make SVM predict
+        jniSvmPredict(dataPredictPath + modelPath + outputPath);
+
+        //displaySvmResults("eval_predict");
+    }
+
+    public void svmPredict(String line)
+    {
+        Log.d(TAG, "CURRENTLY IN SVM PREDICT");
+        // assign model/output paths
+        String dataTrainPath = appFolderPath+"swerve_data ";
+        String dataPredictPath = appFolderPath+"swerve_instance ";
+        String modelPath = appFolderPath+"swerve_model ";
+        String outputPath = appFolderPath+"swerve_realtime_predict ";
+
+        // make SVM train -- for now since there is not training set
+        String svmTrainOptions = "-t 2 ";
+        jniSvmTrain(svmTrainOptions + dataTrainPath + modelPath);
+
+        // make SVM predict
+        jniSvmPredict(dataPredictPath + modelPath + outputPath);
+
+        displaySvmResults("swerve_realtime_predict");
+    }
+
+    /*
+     * take motion plus given class and append it to set
+     */
+    public void appendSvmDataSet(String line)
+    {
+        Log.d(TAG, "IN APPENDSVMDATASET");
+        try
+        {
+            FileWriter fw = new FileWriter(appFolderPath + "swerve_data", true);
+            fw.write(line);
+            fw.close();
+        }
+        catch(IOException e)
+        {
+            Log.d(TAG, "APPENDSVMDATASET" + e.getMessage());
+        }
+    }
+
+    public void displaySvmResults(String filename)
+    {
+        Log.d(TAG, "IN DISPLAY PREDICTION");
+        File file = new File(appFolderPath, filename);
+        try
+        {
+            BufferedReader br = new BufferedReader(new FileReader(file));
+            String line, content = "";
+            while ((line = br.readLine()) != null)
+            {
+                content += line;
+            }
+            // 1-->notnormal, 0-->normal
+            currentAngle.setText(content);
+        }
+        catch(IOException e)
+        {
+            Log.d(TAG, "DISPLAYSVMRESULTS" + e.getMessage());
+        }
+    }
+
+    public void makeModel(View v)
+    {
+        int trainClass = v.getId();
+        if (predictMode == false)
+        {
+            trainMode = true;
+            ((Button) findViewById(R.id.predict)).setEnabled(false);
+            StringBuilder sb = new StringBuilder();
+            if (trainClass == R.id.train_normal)
+            {
+                sb.append(NEG);
+            }
+            else
+            {
+                sb.append(POS);
+            }
+            /* cycle through arraylist instance */
+            int i = 1;
+            for (float f : instance)
+            {
+                sb.append(" " + i + ":" + f);
+                i++;
+            }
+            svmEvaluate();
+            appendSvmDataSet(sb.toString());
+            started = false;
+        }
+    }
+
+    public void makePrediction(View v)
+    {
+        if (trainMode == false)
+        {
+            ((Button) findViewById(R.id.train_normal)).setEnabled(false);
+            ((Button) findViewById(R.id.train_notnormal)).setEnabled(false);
+            predictMode = true;
+
+            StringBuilder sb = new StringBuilder();
+            /* cycle through arraylist instance */
+            int i = 1;
+            for (float f : instance)
+            {
+                sb.append(i + ":" + f + " ");
+                i++;
+            }
+
+            try
+            {
+                FileWriter fw = new FileWriter(appFolderPath + "/swerve_instance", false);
+                fw.write(sb.toString());
+                fw.close();
+            }
+            catch(IOException e)
+            {
+                Log.d(TAG, "MAKEPREDICTION_IOE " + e.getMessage());
+            }
+            svmPredict(sb.toString());
+            started = false;
+        }
+    }
+
+    public void startSwerve(View v)
+    {
+        if (started == false)
+        {
+            tStart = System.currentTimeMillis();
+
+            // start sensors
+            mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
+            mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
+
+            ((Button) findViewById(R.id.train_normal)).setEnabled(false);
+            ((Button) findViewById(R.id.train_notnormal)).setEnabled(false);
+            ((Button) findViewById(R.id.predict)).setEnabled(false);
+
+            started = true;
+        }
+    }
+
+    public void stopSwerve(View v)
+    {
+        Log.d(TAG, "STOP SWERVE");
+        if (started == true)
+        {
+            super.onPause();
+            mgr.unregisterListener(this);
+            tEnd = System.currentTimeMillis();
+            t = tEnd - tStart;
+            currentTime.setText(Float.toString(t));
+            calcSvmFeatures();
+            ((Button) findViewById(R.id.train_normal)).setEnabled(true);
+            ((Button) findViewById(R.id.train_notnormal)).setEnabled(true);
+            ((Button) findViewById(R.id.predict)).setEnabled(true);
+        }
+    }
+
+    @Override
+    public final void onSensorChanged(SensorEvent event)
+    {
+        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER)
+        {
+            mGravity = event.values.clone();
+            //onAccelerometerSensorChange(event);
+        }
+        if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE)
+        {
+            //onGyroscopeSensorChange(event);
+        }
+        if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD)
+        {
+            mGeomagnetic = event.values.clone();
+            //onMagneticFieldSensorChange(event);
+        }
+
+        getEventFeatures();
+    }
+
+    public float calcAvg(ArrayList<Float> data)
+    {
+        float dataSum = 0;
+        for (float d : data)
+        {
+            dataSum += d;
+        }
+        return dataSum / data.size();
+    }
+
+    public float calcStd(ArrayList<Float> data, float dataAvg)
+    {
+        float std = 0;
+        for (float d : data)
+        {
+            std += Math.pow(d - dataAvg, 2.0D);
+        }
+        return (float) Math.sqrt(std);
+    }
+
+    public void sendToDropbox()
+    {
+        index = 0;
+        ArrayList<Float> dataAzimClone = new ArrayList(dataAzim);
+        ArrayList<Float> dataPitchClone = new ArrayList(dataPitch);
+        ArrayList<Float> timeClone = new ArrayList(time);
+        Connect dbx = new Connect()
+        {
+            @Override
+            public void onPostExecute(Boolean result)
+            {
+                if (result == true)
+                {
+                    System.out.println("Data sent to Dropbox");
+                }
+            }
+        };
+        dbx.execute(dataAzimClone, dataPitchClone, timeClone);
+    }
+
+    public void draw(int angle, int pitch)
+    {
+        Paint paint = new Paint();
+        paint.setColor(Color.BLACK);
+        canvas.drawLine(0, 200, 400, 200, paint);
+        canvas.drawLine(200, 0, 200, 400, paint);
+        paint.setStrokeWidth(4);
+        paint.setColor(Color.DKGRAY);
+        canvas.drawPoint(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength - lineLength * (float) Math.sin(Math.toRadians(pitch)), paint);
+        line.setImageBitmap(bmp);
+    }
+
+    /*
+    * Some utility functions
+    * */
+    private void CreateAppFolderIfNeed()
+    {
+        // 1. create app folder if necessary
+        File folder = new File(appFolderPath);
+
+        if (!folder.exists())
+        {
+            folder.mkdir();
+            Log.d(TAG,"Appfolder is not existed, create one");
+        }
+        else
+        {
+            Log.w(TAG, "WARN: Appfolder has not been deleted");
+        }
+    }
+
+    private void copyAssetsDataIfNeed()
+    {
+        String assetsToCopy[] = {"heart_scale","heart_scale_predict","heart_scale_train"};
+        //String targetPath[] = {C.systemPath+C.INPUT_FOLDER+C.INPUT_PREFIX+AudioConfigManager.inputConfigTrain+".wav", C.systemPath+C.INPUT_FOLDER+C.INPUT_PREFIX+AudioConfigManager.inputConfigPredict+".wav",C.systemPath+C.INPUT_FOLDER+"SomeoneLikeYouShort.mp3"};
+
+        for (int i = 0; i < assetsToCopy.length; i++)
+        {
+            String from = assetsToCopy[i];
+            String to = appFolderPath+from;
+
+            // 1. check if file exist
+            File file = new File(to);
+            if (file.exists())
+            {
+                Log.d(TAG, "copyAssetsDataIfNeed: file exist, no need to copy:"+from);
+            }
+            else
+            {
+                // do copy
+                boolean copyResult = copyAsset(getAssets(), from, to);
+                Log.d(TAG, "copyAssetsDataIfNeed: copy result = " + copyResult + " of file = " + from);
+            }
+        }
+    }
+
+    private boolean copyAsset(AssetManager assetManager, String fromAssetPath, String toPath)
+    {
+        InputStream in = null;
+        OutputStream out = null;
+        try
+        {
+            in = assetManager.open(fromAssetPath);
+            new File(toPath).createNewFile();
+            out = new FileOutputStream(toPath);
+            copyFile(in, out);
+            in.close();
+            in = null;
+            out.flush();
+            out.close();
+            out = null;
+            return true;
+        }
+        catch(Exception e)
+        {
+            e.printStackTrace();
+            Log.e(TAG, "[ERROR]: copyAsset: unable to copy file = " + fromAssetPath);
+            return false;
+        }
+    }
+
+    private void copyFile(InputStream in, OutputStream out) throws IOException
+    {
+        byte[] buffer = new byte[1024];
+        int read;
+        while((read = in.read(buffer)) != -1)
+        {
+            out.write(buffer, 0, read);
+        }
+    }
+
+    @Override
+    public final void onAccuracyChanged(Sensor sensor, int accuracy)
+    {
+        // suh dude
+    }
+
+    @Override
+    protected void onResume()
+    {
+        super.onResume();
+        mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
+        mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
+        //mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_FASTEST);
+    }
+
+    @Override
+    protected void onPause()
+    {
+        super.onPause();
+        mgr.unregisterListener(this);
+    }
+
+    public void displayCleanValues()
+    {
+        //currentX.setText("–");
+        //currentY.setText("–");
+        //currentZ.setText("–");
+    }
+
+    public void initializeViews()
+    {
+        //currentX = (TextView) findViewById(R.id.currentX);
+        //currentY = (TextView) findViewById(R.id.currentY);
+        //currentZ = (TextView) findViewById(R.id.currentZ);
+        //currentMagnitude = (TextView) findViewById(R.id.currentOmega);
+        currentAngle = (TextView) findViewById(R.id.angle);
+        currentTime = (TextView) findViewById(R.id.time);
+    }
+
+
+    /***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************
+     *
+     * currently unused
+     *
+     ***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************/
 
     public void onAccelerometerSensorChange(SensorEvent event)
     {
@@ -296,7 +829,7 @@ public class MotionSensor extends Activity implements SensorEventListener
         // display motion
         currentAngle.setText("3D Angle: " + Integer.toString(i3dAngle) + " degrees");
         currentTime.setText("Time: " + Float.toString(timestamp) + " ms");
-        drawLine(iSway, iPitch);
+        draw(iSway, iPitch);
 
         // if 100 ms or more has elapsed, average all the data collected
         // over the last appx 100 ms time interval
@@ -365,337 +898,33 @@ public class MotionSensor extends Activity implements SensorEventListener
         // nothing
     }
 
-    public float calcAvg(ArrayList<Float> data)
-    {
-        float dataSum = 0;
-        for (float d : data)
-        {
-            dataSum += d;
-        }
-        return dataSum / data.size();
-    }
-
-    public float calcStd(ArrayList<Float> data, float dataAvg)
-    {
-        float std = 0;
-        for (float d : data)
-        {
-            std += Math.pow(d - dataAvg, 2.0D);
-        }
-        return (float) Math.sqrt(std);
-    }
-
-    public void calcSvmFeatures()
-    {
-        meanAccX = calcAvg(accX);
-        meanAccZ = calcAvg(accZ);
-        meanOriX = calcAvg(oriX);
-        meanOriZ = calcAvg(oriZ);
-
-        maxAccX = Collections.max(accX);
-        minAccX = Collections.min(accX);
-        maxAccZ = Collections.max(accZ);
-        minAccZ = Collections.min(accZ);
-
-        maxOriX = Collections.max(oriX);
-        minOriX = Collections.min(oriX);
-        maxOriZ = Collections.max(oriZ);
-        minOriZ = Collections.min(oriZ);
-
-        rangeAccX = maxAccX - minAccX;
-        rangeAccZ = maxAccZ - minAccZ;
-
-        stdAccX = calcStd(accX, meanAccX);
-        stdAccZ = calcStd(accZ, meanAccZ);
-        stdOriX = calcStd(oriX, meanOriX);
-        stdOriZ = calcStd(oriZ, meanOriZ);
-    }
-
-    public void svmTrain()
-    {
-        // assign model/output paths
-        String dataTrainPath = appFolderPath+"heart_scale ";
-        String dataPredictPath = appFolderPath+"heart_scale ";
-        String modelPath = appFolderPath+"model ";
-        String outputPath = appFolderPath+"predict ";
-
-        // make SVM train
-        String svmTrainOptions = "-t 2 ";
-        jniSvmTrain(svmTrainOptions+dataTrainPath+modelPath);
-    }
-
-    public void svmPredict()
-    {
-        // assign model/output paths
-        String dataTrainPath = appFolderPath+"heart_scale ";
-        String dataPredictPath = appFolderPath+"heart_scale ";
-        String modelPath = appFolderPath+"model ";
-        String outputPath = appFolderPath+"predict ";
-
-        // make SVM predict
-        jniSvmPredict(dataPredictPath+modelPath+outputPath);
-    }
-
-    public void manageRawData(float[] g)
-    {
-        float x = g[0];
-        float y = g[1];
-        float z = g[2];
-
-        long curTime = System.currentTimeMillis();
-        float diffTime = curTime - lastUpdate;
-        timestamp = curTime - startTime;
-
-        float accMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
-        float xyMagnitude = (float) Math.sqrt(x*x + y*y);
-
-        // normalize
-        if (xyMagnitude < 8)
-        {
-            x /= accMagnitude;
-            y /= accMagnitude;
-            z /= accMagnitude;
-        }
-        else
-        {
-            x *= 100;
-            y *= 100;
-            z *= 100;
-        }
-        float normMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
-
-        // sway
-        int iSway = (int) Math.round(Math.toDegrees(Math.atan2(x, y)));
-        float fSway = Math.round(Math.toDegrees(Math.atan2(x, y)));
-
-        // pitch
-        int iPitch = (int) Math.round(Math.toDegrees(Math.atan2(z, y)));
-        float fPitch = Math.round(Math.toDegrees(Math.atan2(z, y)));
-
-        // 3d orientation
-        int i3dAngle = (int) Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
-        float f3dAngle = Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
-
-        // 100 ms avg
-        ms3d.add(f3dAngle);
-        msSway.add(fSway);
-        msPitch.add(fPitch);
-
-        // display motion
-        currentAngle.setText("3D Angle: " + Integer.toString(i3dAngle) + " degrees");
-        currentTime.setText("Time: " + Float.toString(timestamp) + " ms");
-        drawLine(iSway, iPitch);
-
-        // if 100 ms or more has elapsed, average all the data collected
-        // over the last appx 100 ms time interval
-        if (diffTime >= 100)
-        {
-            lastUpdate = curTime;
-            float avgSway = calcAvg(msSway);
-            float avgPitch = calcAvg(msPitch);
-            try
-            {
-                dataAzim.set(index, avgSway);
-                dataPitch.set(index, avgPitch);
-                time.set(index, timestamp);
-            }
-            catch (IndexOutOfBoundsException e)
-            {
-                dataAzim.add(index, avgSway);
-                dataPitch.add(index, avgSway);
-                time.add(index, timestamp);
-            }
-            index++;
-            ms3d.clear();
-            msSway.clear();
-            msPitch.clear();
-        }
-
-        // write to Dropbox every 60 seconds (100ms * 600 = 60000 ms = 60 seconds)
-        if (index >= 600)
-        {
-            index = 0;
-            ArrayList<Float> dataAzimClone = new ArrayList(dataAzim);
-            ArrayList<Float> dataPitchClone = new ArrayList(dataPitch);
-            ArrayList<Float> timeClone = new ArrayList(time);
-            Connect dbx = new Connect()
-            {
-                @Override
-                public void onPostExecute(Boolean result)
-                {
-                    if (result == true)
-                    {
-                        System.out.println("Data sent to Dropbox");
-                    }
-                }
-            };
-            dbx.execute(dataAzimClone, dataPitchClone, timeClone);
-        }
-    }
-
-    @Override
-    public final void onSensorChanged(SensorEvent event)
-    {
-        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER)
-        {
-            mGravity = event.values.clone();
-            //onAccelerometerSensorChange(event);
-        }
-        if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE)
-        {
-            //onGyroscopeSensorChange(event);
-        }
-        if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD)
-        {
-            mGeomagnetic = event.values.clone();
-            //onMagneticFieldSensorChange(event);
-        }
-
-        getEventFeatures();
-    }
-
-    @Override
-    public final void onAccuracyChanged(Sensor sensor, int accuracy)
-    {
-        // suh dude
-    }
-
-    @Override
-    protected void onResume()
-    {
-        super.onResume();
-        mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
-        mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
-        //mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_FASTEST);
-    }
-
-    @Override
-    protected void onPause()
-    {
-        super.onPause();
-        mgr.unregisterListener(this);
-    }
-
-    public void displayCleanValues()
-    {
-        //currentX.setText("–");
-        //currentY.setText("–");
-        //currentZ.setText("–");
-    }
-
-    public void initializeViews()
-    {
-        //currentX = (TextView) findViewById(R.id.currentX);
-        //currentY = (TextView) findViewById(R.id.currentY);
-        //currentZ = (TextView) findViewById(R.id.currentZ);
-        //currentMagnitude = (TextView) findViewById(R.id.currentOmega);
-        currentAngle = (TextView) findViewById(R.id.angle);
-        currentTime = (TextView) findViewById(R.id.time);
-    }
-
-    public void startSwerve(View v)
-    {
-        if (started == false)
-        {
-            tStart = System.currentTimeMillis();
-
-            // start sensors
-            mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
-            mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
-
-            started = true;
-        }
-    }
-
-    public void stopSwerve(View v)
-    {
-        if (started == true)
-        {
-            super.onPause();
-            mgr.unregisterListener(this);
-            tEnd = System.currentTimeMillis();
-            t = tEnd - tStart;
-            displayCleanValues();
-            currentTime.setText(Float.toString(t));
-        }
-    }
-
     /*
-    * Some utility functions
-    * */
-    private void CreateAppFolderIfNeed()
-    {
-        // 1. create app folder if necessary
-        File folder = new File(appFolderPath);
-
-        if (!folder.exists())
-        {
-            folder.mkdir();
-            Log.d(TAG,"Appfolder is not existed, create one");
-        }
-        else
-        {
-            Log.w(TAG,"WARN: Appfolder has not been deleted");
-        }
-    }
-
-    private void copyAssetsDataIfNeed()
-    {
-        String assetsToCopy[] = {"swerve_predict","swerve_train","swerve"};
-        //String targetPath[] = {C.systemPath+C.INPUT_FOLDER+C.INPUT_PREFIX+AudioConfigManager.inputConfigTrain+".wav", C.systemPath+C.INPUT_FOLDER+C.INPUT_PREFIX+AudioConfigManager.inputConfigPredict+".wav",C.systemPath+C.INPUT_FOLDER+"SomeoneLikeYouShort.mp3"};
-
-        for(int i=0; i < assetsToCopy.length; i++)
-        {
-            String from = assetsToCopy[i];
-            String to = appFolderPath+from;
-
-            // 1. check if file exist
-            File file = new File(to);
-            if (file.exists())
-            {
-                Log.d(TAG, "copyAssetsDataIfNeed: file exist, no need to copy:"+from);
-            }
-            else
-            {
-                // do copy
-                boolean copyResult = copyAsset(getAssets(), from, to);
-                Log.d(TAG, "copyAssetsDataIfNeed: copy result = " + copyResult + " of file = " + from);
-            }
-        }
-    }
-
-    private boolean copyAsset(AssetManager assetManager, String fromAssetPath, String toPath)
-    {
-        InputStream in = null;
-        OutputStream out = null;
-        try
-        {
-            in = assetManager.open(fromAssetPath);
-            new File(toPath).createNewFile();
-            out = new FileOutputStream(toPath);
-            copyFile(in, out);
-            in.close();
-            in = null;
-            out.flush();
-            out.close();
-            out = null;
-            return true;
-        }
-        catch(Exception e)
-        {
-            e.printStackTrace();
-            Log.e(TAG, "[ERROR]: copyAsset: unable to copy file = " + fromAssetPath);
-            return false;
-        }
-    }
-
-    private void copyFile(InputStream in, OutputStream out) throws IOException
-    {
-        byte[] buffer = new byte[1024];
-        int read;
-        while((read = in.read(buffer)) != -1)
-        {
-            out.write(buffer, 0, read);
-        }
-    }
+    Usage: svm-train [options] training_set_file [model_file]"
+		"options:
+		-s svm_type : set type of SVM (default 0)
+			0 -- C-SVC		(multi-class classification)\n
+			1 -- nu-SVC		(multi-class classification)\n
+			2 -- one-class SVM\n
+			3 -- epsilon-SVR	(regression)\n
+			4 -- nu-SVR		(regression)\n
+		-t kernel_type : set type of kernel function (default 2)\n
+			0 -- linear: u'*v\n
+			1 -- polynomial: (gamma*u'*v + coef0)^degree\n
+			2 -- radial basis function: exp(-gamma*|u-v|^2)\n
+			3 -- sigmoid: tanh(gamma*u'*v + coef0)\n
+			4 -- precomputed kernel (kernel values in training_set_file)\n
+		-d degree : set degree in kernel function (default 3)\n
+		-g gamma : set gamma in kernel function (default 1/num_features)\n
+		-r coef0 : set coef0 in kernel function (default 0)\n
+		-c cost : set the parameter C of C-SVC, epsilon-SVR, and nu-SVR (default 1)\n
+		-n nu : set the parameter nu of nu-SVC, one-class SVM, and nu-SVR (default 0.5)\n
+		-p epsilon : set the epsilon in loss function of epsilon-SVR (default 0.1)\n
+		-m cachesize : set cache memory size in MB (default 100)\n
+		-e epsilon : set tolerance of termination criterion (default 0.001)\n
+		-h shrinking : whether to use the shrinking heuristics, 0 or 1 (default 1)\n
+		-b probability_estimates : whether to train a SVC or SVR model for probability estimates, 0 or 1 (default 0)\n
+		-wi weight : set the parameter C of class i to weight*C, for C-SVC (default 1)\n
+		-v n: n-fold cross validation mode\n
+	    -q : quiet mode (no outputs)\n
+     */
 }
