@@ -73,7 +73,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     float meanAccX, meanAccZ, stdAccX, stdAccZ, maxAccX, maxAccZ, minAccX, minAccZ;
     float meanOriX, meanOriZ, stdOriX, stdOriZ, maxOriX, maxOriZ, minOriX, minOriZ;
     float meanGyroX, meanGyroZ, stdGyroX, stdGyroZ, maxGyroX, maxGyroZ, minGyroX, minGyroZ;
-    float t, tStart, tEnd;
+    long t, tStart, tEnd;
     ArrayList<Float> instance = new ArrayList();
 
     // D3 data structures
@@ -143,6 +143,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     private DbxPath mDbxPath;
 
     boolean started = false;
+    boolean paused = false;
 
     static
     {
@@ -160,6 +161,15 @@ public class MotionSensor extends Activity implements SensorEventListener
     private native void jniSvmTrain(String cmd);
     private native void jniSvmPredict(String cmd);
     private native void jniHelloWorld(String jstring);
+
+    /*
+     * add user options for:
+     *
+     * 1) time limit
+     * 2) time duration of averaged data (default: 100 ms)
+     * 3) how often to write to dropbox (default: 1 minute) - add [at the end] option
+     * 4) consider time spacing between processing of onsensorchanged
+     */
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -193,7 +203,8 @@ public class MotionSensor extends Activity implements SensorEventListener
             {
                 dbxFs = DbxFileSystem.forAccount(mDbxAcctMgr.getLinkedAccount());
             }
-            catch (DbxException.Unauthorized e) {
+            catch (DbxException.Unauthorized e)
+            {
                 // TO DO
                 e.printStackTrace();
             }
@@ -259,7 +270,7 @@ public class MotionSensor extends Activity implements SensorEventListener
 
         long curTime = System.currentTimeMillis();
         float diffTime = curTime - lastUpdate;
-        timestamp = curTime - startTime;
+        timestamp = curTime - tStart;
 
         float accMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
         float xyMagnitude = (float) Math.sqrt(x*x + y*y);
@@ -297,9 +308,9 @@ public class MotionSensor extends Activity implements SensorEventListener
         msPitch.add(fPitch);
 
         // display motion
-        //currentAngle.setText("3D Angle: " + Integer.toString(i3dAngle) + " degrees");
+        currentAngle.setText("3D Angle: " + Integer.toString(i3dAngle) + " degrees");
         currentTime.setText("Time: " + Float.toString(timestamp) + " ms");
-        //draw(iSway, iPitch);
+        draw(iSway, iPitch);
 
         // if 100 ms or more has elapsed, average all the data collected
         // over the last appx 100 ms time interval
@@ -388,7 +399,7 @@ public class MotionSensor extends Activity implements SensorEventListener
         //instance.add(minOriX);
         instance.add(maxOriZ);
         //instance.add(minOriZ);
-        instance.add(t);
+        instance.add((float)t);
     }
 
     /*
@@ -421,7 +432,6 @@ public class MotionSensor extends Activity implements SensorEventListener
         String modelPath = appFolderPath+"swerve_model ";
         String outputPath = appFolderPath+"swerve_realtime_predict ";
 
-        // make SVM train -- for now since there is not training set
         String svmTrainOptions = "-t 2 ";
         jniSvmTrain(svmTrainOptions + dataTrainPath + modelPath);
 
@@ -440,7 +450,7 @@ public class MotionSensor extends Activity implements SensorEventListener
         try
         {
             FileWriter fw = new FileWriter(appFolderPath + "swerve_data", true);
-            fw.write(line);
+            fw.write(line + "\n");
             fw.close();
         }
         catch(IOException e)
@@ -461,7 +471,6 @@ public class MotionSensor extends Activity implements SensorEventListener
             {
                 content += line;
             }
-            // 1-->notnormal, 0-->normal
             currentAngle.setText(content);
         }
         catch(IOException e)
@@ -475,15 +484,18 @@ public class MotionSensor extends Activity implements SensorEventListener
         int trainClass = v.getId();
         if (predictMode == false)
         {
+            calcSvmFeatures();
             trainMode = true;
             ((Button) findViewById(R.id.predict)).setEnabled(false);
             StringBuilder sb = new StringBuilder();
             if (trainClass == R.id.train_normal)
             {
+                ((Button) findViewById(R.id.train_notnormal)).setEnabled(false);
                 sb.append(NEG);
             }
             else
             {
+                ((Button) findViewById(R.id.train_normal)).setEnabled(false);
                 sb.append(POS);
             }
             /* cycle through arraylist instance */
@@ -496,6 +508,8 @@ public class MotionSensor extends Activity implements SensorEventListener
             svmEvaluate();
             appendSvmDataSet(sb.toString());
             started = false;
+            // reset arraylists
+            clearD3Structures();
         }
     }
 
@@ -503,6 +517,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     {
         if (trainMode == false)
         {
+            calcSvmFeatures();
             ((Button) findViewById(R.id.train_normal)).setEnabled(false);
             ((Button) findViewById(R.id.train_notnormal)).setEnabled(false);
             predictMode = true;
@@ -528,14 +543,22 @@ public class MotionSensor extends Activity implements SensorEventListener
             }
             svmPredict(sb.toString());
             started = false;
+            // reset arraylists
+            clearD3Structures();
         }
     }
 
     public void startSwerve(View v)
     {
-        if (started == false)
+        if (started == false || paused == true)
         {
-            tStart = System.currentTimeMillis();
+            if (paused == false)
+            {
+                tStart = System.currentTimeMillis();
+            }
+
+            // reset arraylists
+            //clearD3Structures();
 
             // start sensors
             mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
@@ -558,12 +581,30 @@ public class MotionSensor extends Activity implements SensorEventListener
             mgr.unregisterListener(this);
             tEnd = System.currentTimeMillis();
             t = tEnd - tStart;
-            currentTime.setText(Float.toString(t));
-            calcSvmFeatures();
+            //currentTime.setText(Float.toString(t));
+            //calcSvmFeatures();
+            //started = false;
+            paused = true;
             ((Button) findViewById(R.id.train_normal)).setEnabled(true);
             ((Button) findViewById(R.id.train_notnormal)).setEnabled(true);
             ((Button) findViewById(R.id.predict)).setEnabled(true);
         }
+    }
+
+    public void clearD3Structures()
+    {
+        instance.clear();
+        accX.clear();
+        accZ.clear();
+        oriX.clear();
+        oriZ.clear();
+        //gyroZ.clear();
+        //gyroZ.clear();
+        tStart = 0;
+        timestamp = 0;
+        started = false;
+        paused = false;
+        //clear plot display
     }
 
     @Override
@@ -644,7 +685,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     * */
     private void CreateAppFolderIfNeed()
     {
-        // 1. create app folder if necessary
+        // create app folder if necessary
         File folder = new File(appFolderPath);
 
         if (!folder.exists())
