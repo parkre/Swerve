@@ -387,51 +387,63 @@ public class MotionSensor extends Activity implements SensorEventListener
     {
         meanAccX = calcAvg(accX);
         meanAccZ = calcAvg(accZ);
-        meanOriX = calcAvg(oriX);
-        meanOriZ = calcAvg(oriZ);
+        meanGyroX = calcAvg(gyroX);
+        meanGyroZ = calcAvg(gyroZ);
+        //meanOriX = calcAvg(oriX);
+        //meanOriZ = calcAvg(oriZ);
 
         maxAccX = Collections.max(accX);
         minAccX = Collections.min(accX);
         maxAccZ = Collections.max(accZ);
         minAccZ = Collections.min(accZ);
 
-        maxOriX = Collections.max(oriX);
-        minOriX = Collections.min(oriX);
-        maxOriZ = Collections.max(oriZ);
-        minOriZ = Collections.min(oriZ);
+        maxGyroX = Collections.max(gyroX);
+        minGyroX = Collections.min(gyroX);
+        maxGyroZ = Collections.max(gyroZ);
+        minGyroZ = Collections.min(gyroZ);
+
+        //maxOriX = Collections.max(oriX);
+        //minOriX = Collections.min(oriX);
+        //maxOriZ = Collections.max(oriZ);
+        //minOriZ = Collections.min(oriZ);
 
         rangeAccX = maxAccX - minAccX;
         rangeAccZ = maxAccZ - minAccZ;
-        rangeOriX = maxOriX - minOriX;
-        rangeOriZ = maxOriZ - minOriZ;
+        rangeGyroX = maxGyroX - minGyroX;
+        rangeGyroZ = maxGyroZ - minGyroZ;
+        //rangeOriX = maxOriX - minOriX;
+        //rangeOriZ = maxOriZ - minOriZ;
 
         stdAccX = calcStd(accX, meanAccX);
         stdAccZ = calcStd(accZ, meanAccZ);
-        stdOriX = calcStd(oriX, meanOriX);
-        stdOriZ = calcStd(oriZ, meanOriZ);
+        stdGyroX = calcStd(gyroX, meanGyroX);
+        stdGyroZ = calcStd(gyroZ, meanGyroZ);
+        //stdOriX = calcStd(oriX, meanOriX);
+        //stdOriZ = calcStd(oriZ, meanOriZ);
 
         /* store in arraylist */
-        instance.add(rangeAccX);
-        instance.add(rangeAccZ);
+        instance.add(rangeAccX);    // 1
+        instance.add(rangeAccZ);    // 2
         //instance.add(rangeOriX);
         //instance.add(rangeOriZ);
-        instance.add(stdAccX);
-        instance.add(stdAccZ);
-        instance.add(stdOriX);
-        instance.add(stdOriZ);
-        instance.add(meanAccX);
-        instance.add(meanAccZ);
-        instance.add(meanOriX);
-        instance.add(meanOriZ);
+        instance.add(stdAccX);      // 3
+        instance.add(stdAccZ);      // 4
+        instance.add(stdGyroX);     // 5
+        instance.add(stdGyroZ);     // 6
+        instance.add(meanAccX);     // 7
+        instance.add(meanAccZ);     // 8
+        instance.add(meanGyroX);    // 9
+        instance.add(meanGyroZ);    // 10
         //instance.add(maxAccX);
         //instance.add(minAccX);
         //instance.add(maxAccZ);
-        instance.add(minAccZ);
-        instance.add(maxOriX);
+        instance.add(maxGyroX);     // 11
+        instance.add(maxGyroZ);     // 12
         //instance.add(minOriX);
-        instance.add(maxOriZ);
+        instance.add(maxAccX);      // 12
+        instance.add(maxAccZ);      // 14
         //instance.add(minOriZ);
-        instance.add((float)t);
+        instance.add((float)t);     // 15
     }
 
     /*
