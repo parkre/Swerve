@@ -61,7 +61,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     private long timestamp;
     private long lastUpdate;// = 0;
     private long startTime;// = System.currentTimeMillis(); //Dropboxer.getStartTime();
-    private long timeLimit = 300000L; // 5 minutes
+    private long timeLimit = 60000L; // 1 minute
 
     // accelerometer-based data structures
     private ArrayList<Float> msSway = new ArrayList();
@@ -69,7 +69,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     private ArrayList<Float> ms3d = new ArrayList();
 
     // D3 features
-    float rangeAccX, rangeAccZ, rangeOriX, rangeOriZ;
+    float rangeAccX, rangeAccZ, rangeGyroX, rangeGyroZ, rangeOriX, rangeOriZ;
     float meanAccX, meanAccZ, stdAccX, stdAccZ, maxAccX, maxAccZ, minAccX, minAccZ;
     float meanOriX, meanOriZ, stdOriX, stdOriZ, maxOriX, maxOriZ, minOriX, minOriZ;
     float meanGyroX, meanGyroZ, stdGyroX, stdGyroZ, maxGyroX, maxGyroZ, minGyroX, minGyroZ;
@@ -79,10 +79,10 @@ public class MotionSensor extends Activity implements SensorEventListener
     // D3 data structures
     ArrayList<Float> accX = new ArrayList();
     ArrayList<Float> accZ = new ArrayList();
-    ArrayList<Float> oriX = new ArrayList();
-    ArrayList<Float> oriZ = new ArrayList();
     ArrayList<Float> gyroX = new ArrayList();
     ArrayList<Float> gyroZ = new ArrayList();
+    ArrayList<Float> oriX = new ArrayList();
+    ArrayList<Float> oriZ = new ArrayList();
 
     // svm variables
     boolean trainMode = false;
@@ -104,9 +104,10 @@ public class MotionSensor extends Activity implements SensorEventListener
     private float timeFl = 0;
     private float timeSkip = 0;
 
-    float[] mGravityClone = new float[3];
-    float[] mGravity;
-    float[] mGeomagnetic;
+    float[] gClone = new float[3];
+    float[] g;
+    float[] m;
+    float[] r;
     float orientation[] = new float[3];
 
     // magnetic sensor
@@ -165,10 +166,7 @@ public class MotionSensor extends Activity implements SensorEventListener
     /*
      * add user options for:
      *
-     * 1) time limit
-     * 2) time duration of averaged data (default: 100 ms)
      * 3) how often to write to dropbox (default: 1 minute) - add [at the end] option
-     * 4) consider time spacing between processing of onsensorchanged
      */
 
     @Override
@@ -222,11 +220,18 @@ public class MotionSensor extends Activity implements SensorEventListener
 
         // accelerometer
         accelerometer = mgr.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-        mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
+        //mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
+        mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+
+        // gyroscope
+        gyroscope = mgr.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+        //mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_FASTEST);
+        mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_NORMAL);
 
         // magnetic field sensor
         magnetometer = mgr.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-        mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
+        //mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
+        mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL);
     }
 
     /*
@@ -234,11 +239,11 @@ public class MotionSensor extends Activity implements SensorEventListener
      */
     public void getEventFeatures()
     {
-        if (mGravity != null && mGeomagnetic != null)
+        if (g != null && m != null)
         {
             float R[] = new float[9];
             float I[] = new float[9];
-            boolean itWorks = SensorManager.getRotationMatrix(R, I, mGravity, mGeomagnetic);
+            boolean itWorks = SensorManager.getRotationMatrix(R, I, g, m);
 
             if (itWorks)
             {
@@ -246,23 +251,49 @@ public class MotionSensor extends Activity implements SensorEventListener
                 SensorManager.getOrientation(R, orientation);
 
                 // D3 orientation features
-                oriZ.add(orientation[0]); // rotation around z axis --> azimut
-                oriX.add(orientation[1]); // rotation around x axis --> pitch
+                oriZ.add(Math.abs(orientation[0])); // rotation around z axis --> azimut
+                oriX.add(Math.abs(orientation[1])); // rotation around x axis --> pitch
                 //orientation[2]; // rotation around y axis --> roll
-                mGravityClone = mGravity.clone();
-                accX.add(mGravityClone[0]);
-                accZ.add(mGravityClone[2]);
+                gClone = g.clone();
+                accX.add(Math.abs(gClone[0]));
+                accZ.add(Math.abs(gClone[2]));
 
-                // display
-                manageRawData(mGravityClone);
+                // display and dropbox
+                swerve(gClone);
             }
         }
     }
 
+    public void getAccEventFeatures(float[] e)
+    {
+        // acceleration along x, y, z, respectively
+        float x = e[0];
+        float y = e[1];
+        float z = e[2];
+
+        accX.add(Math.abs(x));
+        accZ.add(Math.abs(z));
+
+        // display and dropbox
+        swerve(e);
+    }
+
+    public void getGyroEventFeatures(float[] e)
+    {
+        // rate of rotation around x, y, z, respectively
+        float x = e[0];
+        //float y = e[1];
+        float z = e[2];
+
+        gyroX.add(Math.abs(x));
+        gyroZ.add(Math.abs(z));
+    }
+
+
     /*
      *
      */
-    public void manageRawData(float[] g)
+    public void swerve(float[] g)
     {
         float x = g[0];
         float y = g[1];
@@ -347,6 +378,7 @@ public class MotionSensor extends Activity implements SensorEventListener
         // timeLimit = 300000 ms
         if (curTime - tStart > timeLimit)
         {
+            sendToDropbox();
             stopSwerve(null);
         }
     }
@@ -591,41 +623,26 @@ public class MotionSensor extends Activity implements SensorEventListener
         }
     }
 
-    public void clearD3Structures()
-    {
-        instance.clear();
-        accX.clear();
-        accZ.clear();
-        oriX.clear();
-        oriZ.clear();
-        //gyroZ.clear();
-        //gyroZ.clear();
-        tStart = 0;
-        timestamp = 0;
-        started = false;
-        paused = false;
-        //clear plot display
-    }
-
     @Override
     public final void onSensorChanged(SensorEvent event)
     {
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER)
         {
-            mGravity = event.values.clone();
+            g = event.values.clone();
+            getAccEventFeatures(g);
             //onAccelerometerSensorChange(event);
         }
         if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE)
         {
-            //onGyroscopeSensorChange(event);
+            r = event.values.clone();
+            getGyroEventFeatures(r);
         }
         if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD)
         {
-            mGeomagnetic = event.values.clone();
-            //onMagneticFieldSensorChange(event);
+            //m = event.values.clone();
         }
 
-        getEventFeatures();
+        //getEventFeatures();
     }
 
     public float calcAvg(ArrayList<Float> data)
@@ -678,6 +695,22 @@ public class MotionSensor extends Activity implements SensorEventListener
         paint.setColor(Color.DKGRAY);
         canvas.drawPoint(lineLength - lineLength * (float) Math.sin(Math.toRadians(angle)), lineLength - lineLength * (float) Math.sin(Math.toRadians(pitch)), paint);
         line.setImageBitmap(bmp);
+    }
+
+    public void clearD3Structures()
+    {
+        instance.clear();
+        accX.clear();
+        accZ.clear();
+        oriX.clear();
+        oriZ.clear();
+        gyroZ.clear();
+        gyroZ.clear();
+        tStart = 0;
+        timestamp = 0;
+        started = false;
+        paused = false;
+        //clear plot display
     }
 
     /*
@@ -796,147 +829,6 @@ public class MotionSensor extends Activity implements SensorEventListener
         //currentMagnitude = (TextView) findViewById(R.id.currentOmega);
         currentAngle = (TextView) findViewById(R.id.angle);
         currentTime = (TextView) findViewById(R.id.time);
-    }
-
-
-    /***********************************************************************************************
-     ***********************************************************************************************
-     ***********************************************************************************************
-     ***********************************************************************************************
-     ***********************************************************************************************
-     *
-     * currently unused
-     *
-     ***********************************************************************************************
-     ***********************************************************************************************
-     ***********************************************************************************************
-     ***********************************************************************************************
-     ***********************************************************************************************/
-
-    public void onAccelerometerSensorChange(SensorEvent event)
-    {
-        float[] g = new float[3];
-        g = event.values.clone();
-
-        float x = g[0];
-        float y = g[1];
-        float z = g[2];
-
-        long curTime = System.currentTimeMillis();
-        float diffTime = curTime - lastUpdate;
-        timestamp = curTime - startTime;
-
-        float accMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
-        float xyMagnitude = (float) Math.sqrt(x*x + y*y);
-        float zyMagnitude = (float) Math.sqrt(y*y + z*z);
-
-        currentX.setText(Float.toString(x) + " m/s^2");
-        currentY.setText(Float.toString(y) + " m/s^2");
-        currentZ.setText(Float.toString(z) + " m/s^2");
-        currentMagnitude.setText(Float.toString(accMagnitude) + " m/s^2");
-
-        // normalize
-        if (xyMagnitude < 8)
-        {
-            x /= accMagnitude;
-            y /= accMagnitude;
-            z /= accMagnitude;
-        }
-        else
-        {
-            x *= 100;
-            y *= 100;
-            z *= 100;
-        }
-        float normMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
-
-        // sway
-        int iSway = (int) Math.round(Math.toDegrees(Math.atan2(x, y)));
-        float fSway = Math.round(Math.toDegrees(Math.atan2(x, y)));
-
-        // pitch
-        int iPitch = (int) Math.round(Math.toDegrees(Math.atan2(z, y)));
-        float fPitch = Math.round(Math.toDegrees(Math.atan2(z, y)));
-
-        // 3d orientation
-        int i3dAngle = (int) Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
-        float f3dAngle = Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
-
-        // 100 ms avg
-        ms3d.add(f3dAngle);
-        msSway.add(fSway);
-        msPitch.add(fPitch);
-
-        // display motion
-        currentAngle.setText("3D Angle: " + Integer.toString(i3dAngle) + " degrees");
-        currentTime.setText("Time: " + Float.toString(timestamp) + " ms");
-        draw(iSway, iPitch);
-
-        // if 100 ms or more has elapsed, average all the data collected
-        // over the last appx 100 ms time interval
-        if (diffTime >= 100)
-        {
-            lastUpdate = curTime;
-            float avg3d = calcAvg(ms3d);
-            float avgSway = calcAvg(msSway);
-            try
-            {
-                data3d.set(index, avg3d);
-                dataAzim.set(index, avgSway);
-                time.set(index, timestamp);
-            }
-            catch (IndexOutOfBoundsException e)
-            {
-                data3d.add(index, avg3d);
-                dataAzim.add(index, avgSway);
-                time.add(index, timestamp);
-            }
-            index++;
-            ms3d.clear();
-            msSway.clear();
-            msPitch.clear();
-        }
-
-        // write to Dropbox every 60 seconds (100ms * 600 = 60000 ms = 60 seconds)
-        if (index >= 600)
-        {
-            index = 0;
-            ArrayList<Float> data3dClone = new ArrayList(data3d);
-            ArrayList<Float> dataAzimClone = new ArrayList(dataAzim);
-            ArrayList<Float> timeClone = new ArrayList(time);
-            Connect dbx = new Connect()
-            {
-                @Override
-                public void onPostExecute(Boolean result)
-                {
-                    if (result == true)
-                    {
-                        System.out.println("Data sent to Dropbox");
-                    }
-                }
-            };
-            dbx.execute(data3dClone, dataAzimClone, timeClone);
-        }
-
-        // implement 5 minute time limit
-        if (curTime - startTime > timeLimit)
-        {
-            super.onPause();
-            mgr.unregisterListener(this);
-            displayCleanValues();
-            currentTime.setText("5 minutes");
-            Toast.makeText(this, "5 minute time limit is up!", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    public void onGyroscopeSensorChange(SensorEvent event)
-    {
-        // Java_MotionSensor_Unused
-    }
-
-    public void onMagneticFieldSensorChange(SensorEvent event)
-    {
-        // nothing
     }
 
     /*

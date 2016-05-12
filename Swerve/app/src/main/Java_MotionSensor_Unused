@@ -27,6 +27,136 @@ public void onGyroscopeSensorChange(SensorEvent event)
     gyroY.add(y);
 }
 
+ /***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************
+     *
+     * currently unused
+     *
+     ***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************
+     ***********************************************************************************************/
+
+    public void onAccelerometerSensorChange(SensorEvent event)
+    {
+        float[] g = new float[3];
+        g = event.values.clone();
+
+        float x = g[0];
+        float y = g[1];
+        float z = g[2];
+
+        long curTime = System.currentTimeMillis();
+        float diffTime = curTime - lastUpdate;
+        timestamp = curTime - startTime;
+
+        float accMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
+        float xyMagnitude = (float) Math.sqrt(x*x + y*y);
+        float zyMagnitude = (float) Math.sqrt(y*y + z*z);
+
+        currentX.setText(Float.toString(x) + " m/s^2");
+        currentY.setText(Float.toString(y) + " m/s^2");
+        currentZ.setText(Float.toString(z) + " m/s^2");
+        currentMagnitude.setText(Float.toString(accMagnitude) + " m/s^2");
+
+        // normalize
+        if (xyMagnitude < 8)
+        {
+            x /= accMagnitude;
+            y /= accMagnitude;
+            z /= accMagnitude;
+        }
+        else
+        {
+            x *= 100;
+            y *= 100;
+            z *= 100;
+        }
+        float normMagnitude = (float) Math.sqrt(x*x + y*y + z*z);
+
+        // sway
+        int iSway = (int) Math.round(Math.toDegrees(Math.atan2(x, y)));
+        float fSway = Math.round(Math.toDegrees(Math.atan2(x, y)));
+
+        // pitch
+        int iPitch = (int) Math.round(Math.toDegrees(Math.atan2(z, y)));
+        float fPitch = Math.round(Math.toDegrees(Math.atan2(z, y)));
+
+        // 3d orientation
+        int i3dAngle = (int) Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
+        float f3dAngle = Math.round(Math.toDegrees(Math.acos(y/normMagnitude)));
+
+        // 100 ms avg
+        ms3d.add(f3dAngle);
+        msSway.add(fSway);
+        msPitch.add(fPitch);
+
+        // display motion
+        currentAngle.setText("3D Angle: " + Integer.toString(i3dAngle) + " degrees");
+        currentTime.setText("Time: " + Float.toString(timestamp) + " ms");
+        draw(iSway, iPitch);
+
+        // if 100 ms or more has elapsed, average all the data collected
+        // over the last appx 100 ms time interval
+        if (diffTime >= 100)
+        {
+            lastUpdate = curTime;
+            float avg3d = calcAvg(ms3d);
+            float avgSway = calcAvg(msSway);
+            try
+            {
+                data3d.set(index, avg3d);
+                dataAzim.set(index, avgSway);
+                time.set(index, timestamp);
+            }
+            catch (IndexOutOfBoundsException e)
+            {
+                data3d.add(index, avg3d);
+                dataAzim.add(index, avgSway);
+                time.add(index, timestamp);
+            }
+            index++;
+            ms3d.clear();
+            msSway.clear();
+            msPitch.clear();
+        }
+
+        // write to Dropbox every 60 seconds (100ms * 600 = 60000 ms = 60 seconds)
+        if (index >= 600)
+        {
+            index = 0;
+            ArrayList<Float> data3dClone = new ArrayList(data3d);
+            ArrayList<Float> dataAzimClone = new ArrayList(dataAzim);
+            ArrayList<Float> timeClone = new ArrayList(time);
+            Connect dbx = new Connect()
+            {
+                @Override
+                public void onPostExecute(Boolean result)
+                {
+                    if (result == true)
+                    {
+                        System.out.println("Data sent to Dropbox");
+                    }
+                }
+            };
+            dbx.execute(data3dClone, dataAzimClone, timeClone);
+        }
+
+        // implement 5 minute time limit
+        if (curTime - startTime > timeLimit)
+        {
+            super.onPause();
+            mgr.unregisterListener(this);
+            displayCleanValues();
+            currentTime.setText("5 minutes");
+            Toast.makeText(this, "5 minute time limit is up!", Toast.LENGTH_LONG).show();
+        }
+    }
+
 /* begin dumb code in getEventFeatures under call to simulateForcePad() */
                 double gNormal = Math.sqrt(mGravityClone[0] * mGravityClone[0] + mGravityClone[1] * mGravityClone[1] + mGravityClone[2] * mGravityClone[2]);
 
