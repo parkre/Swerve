@@ -30,7 +30,7 @@ public class Dropboxer extends Activity //possibly extend async instead
     private static DbxPath mDbxPath;
     static final int REQUEST_LINK_TO_DBX = 0;
 
-    private String name = "";
+    private String name = "No Name";
     // frequency write to dropbox
     // frequency collect data
     // ...

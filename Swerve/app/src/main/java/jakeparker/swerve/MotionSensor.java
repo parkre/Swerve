@@ -229,9 +229,9 @@ public class MotionSensor extends Activity implements SensorEventListener
         mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_NORMAL);
 
         // magnetic field sensor
-        magnetometer = mgr.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        //magnetometer = mgr.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
         //mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
-        mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL);
+        //mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL);
     }
 
     /*
@@ -374,8 +374,8 @@ public class MotionSensor extends Activity implements SensorEventListener
             sendToDropbox();
         }
 
-        // implement 5 minute time limit
-        // timeLimit = 300000 ms
+        // implement 1 minute time limit
+        // timeLimit = 60000 ms
         if (curTime - tStart > timeLimit)
         {
             sendToDropbox();
@@ -386,40 +386,28 @@ public class MotionSensor extends Activity implements SensorEventListener
     public void calcSvmFeatures()
     {
         meanAccX = calcAvg(accX);
-        meanAccZ = calcAvg(accZ);
-        meanGyroX = calcAvg(gyroX);
-        meanGyroZ = calcAvg(gyroZ);
-        //meanOriX = calcAvg(oriX);
-        //meanOriZ = calcAvg(oriZ);
-
         maxAccX = Collections.max(accX);
         minAccX = Collections.min(accX);
+        rangeAccX = maxAccX - minAccX;
+        stdAccX = calcStd(accX, meanAccX);
+
+        meanAccZ = calcAvg(accZ);
         maxAccZ = Collections.max(accZ);
         minAccZ = Collections.min(accZ);
+        rangeAccZ = maxAccZ - minAccZ;
+        stdAccZ = calcStd(accZ, meanAccZ);
 
+        meanGyroX = calcAvg(gyroX);
         maxGyroX = Collections.max(gyroX);
         minGyroX = Collections.min(gyroX);
+        rangeGyroX = maxGyroX - minGyroX;
+        stdGyroX = calcStd(gyroX, meanGyroX);
+
+        meanGyroZ = calcAvg(gyroZ);
         maxGyroZ = Collections.max(gyroZ);
         minGyroZ = Collections.min(gyroZ);
-
-        //maxOriX = Collections.max(oriX);
-        //minOriX = Collections.min(oriX);
-        //maxOriZ = Collections.max(oriZ);
-        //minOriZ = Collections.min(oriZ);
-
-        rangeAccX = maxAccX - minAccX;
-        rangeAccZ = maxAccZ - minAccZ;
-        rangeGyroX = maxGyroX - minGyroX;
         rangeGyroZ = maxGyroZ - minGyroZ;
-        //rangeOriX = maxOriX - minOriX;
-        //rangeOriZ = maxOriZ - minOriZ;
-
-        stdAccX = calcStd(accX, meanAccX);
-        stdAccZ = calcStd(accZ, meanAccZ);
-        stdGyroX = calcStd(gyroX, meanGyroX);
         stdGyroZ = calcStd(gyroZ, meanGyroZ);
-        //stdOriX = calcStd(oriX, meanOriX);
-        //stdOriZ = calcStd(oriZ, meanOriZ);
 
         /* store in arraylist */
         instance.add(rangeAccX);    // 1
@@ -605,8 +593,8 @@ public class MotionSensor extends Activity implements SensorEventListener
             //clearD3Structures();
 
             // start sensors
-            mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
-            mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
+            mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+            mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_NORMAL);
 
             ((Button) findViewById(R.id.train_normal)).setEnabled(false);
             ((Button) findViewById(R.id.train_notnormal)).setEnabled(false);
@@ -814,9 +802,12 @@ public class MotionSensor extends Activity implements SensorEventListener
     protected void onResume()
     {
         super.onResume();
-        mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
-        mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
+        mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+        mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_NORMAL);
+        //mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_NORMAL);
+        //mgr.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_FASTEST);
         //mgr.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_FASTEST);
+        //mgr.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_FASTEST);
     }
 
     @Override
